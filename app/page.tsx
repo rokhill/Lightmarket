@@ -47,6 +47,7 @@ export default function Home() {
   const [loadOffset, setLoadOffset] = useState(30);
   const [totalMarketCount, setTotalMarketCount] = useState(0);
   const [totalVolume, setTotalVolume] = useState(0);
+  const [hiddenMarkets, setHiddenMarkets] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     setIsMobile(/iPhone|iPad|iPod|Android/i.test(navigator.userAgent));
@@ -122,13 +123,12 @@ loadMarkets();
       setTotalMarketCount(total);
       // Fetch total volume from ALL markets
       let allVolume = 0;
-      for (let i = 0; i < total; i++) {
-        try {
-          const m = await contract.getMarket(i);
-          allVolume += parseFloat(ethers.formatEther(m.totalPool));
-        } catch {}
-      }
-      setTotalVolume(allVolume);
+      // Fetch total volume in parallel (much faster)
+      const volumePromises = Array.from({length: total}, (_, i) => 
+        contract.getMarket(i).then((m: any) => parseFloat(ethers.formatEther(m.totalPool))).catch(() => 0)
+      );
+      const volumes = await Promise.all(volumePromises);
+      setTotalVolume(volumes.reduce((a: number, b: number) => a + b, 0));
       const start = Math.max(0, total - loadOffset);
       for (let i = start; i < total; i++) {
         try {
@@ -295,7 +295,7 @@ let filtered = [...markets].sort((a, b) => b.id - a.id);
       setActiveMarket(null);
       setSelectedSide(null);
       setBetAmount("");
-      loadMarkets();
+      setTimeout(() => loadMarkets(), 3000);
     } catch (err: any) {
       showToast(err.reason || err.message || "Transaction failed", "error");
     } finally {
@@ -394,6 +394,12 @@ let filtered = [...markets].sort((a, b) => b.id - a.id);
   const createMarket = async () => {
     if (!wallet) {
       showToast("Connect wallet first", "error");
+    const last24h = Date.now() - 86400000;
+    const recentMarkets = markets.filter(m => m.creator?.toLowerCase() === wallet?.toLowerCase() && m.id > 0).length;
+    if (recentMarkets >= 10) {
+      showToast("Maximum 10 markets per wallet per day during alpha", "error");
+      return;
+    }
       return;
     }
     if (!mktQuestion.trim()) {
@@ -417,8 +423,8 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
       showToast("End time must be in the future", "error");
       return;
     }
-    if (closesAt - now < 3600) {
-      showToast("Market must run for at least 1 hour", "error");
+    if (closesAt - now < 3300) {
+      showToast("Market must run for at least 55 minutes", "error");
       return;
     }
     try {
@@ -548,12 +554,13 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
             )}
             {wallet ? (
               <div onClick={(e) => { e.stopPropagation(); setWalletMenuOpen(!walletMenuOpen); }}
-                className="relative flex items-center gap-2 rounded-full border border-[#7B61FF]/50 bg-black/50 px-3 py-1.5 text-xs text-[#7B61FF] cursor-pointer">
+                className="relative flex items-center gap-2 rounded-full border border-[#7B61FF]/70 bg-[#7B61FF]/10 px-3 py-1.5 text-xs text-[#A78BFA] cursor-pointer hover:bg-[#7B61FF]/20 hover:border-[#7B61FF] transition-all shadow-[0_0_10px_rgba(123,97,255,0.3)]">
                 <div className="h-1.5 w-1.5 rounded-full bg-green-400" />
                 <span className="hidden sm:block">{balance} LCAI</span>
                 <span className="h-3 w-px bg-[#7B61FF]/40 hidden sm:block" />
                 <span className="font-mono">{wallet.slice(0, 6)}...{wallet.slice(-4)}</span>
-                {isOwner && <span className="text-[9px] bg-[#7B61FF]/20 rounded px-1">OWNER</span>}
+                {isOwner && <span className="text-[9px] bg-[#7B61FF]/20 rounded px-1">OWNER</span>}<span className="text-[10px] opacity-60">▼</span>
+                <span className="hidden sm:block text-[10px] text-[#A78BFA] font-semibold">My Profile</span>
 {walletMenuOpen && (
                   <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-[#7B61FF]/30 bg-black/90 backdrop-blur-xl shadow-xl p-3 z-50">
                     <div className="border-b border-white/10 pb-3 mb-3">
@@ -610,7 +617,7 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
         </div>
         {/* ROW 3 — Alpha warning */}
         <div className="w-full bg-yellow-500/10 border-t border-yellow-500/20 text-center py-1 px-4 text-xs text-yellow-400 font-semibold">
-          ⚠️ Alpha Version — Not available to US residents. Max bet 10 LCAI. Use at your own risk.
+          ⚠️ ALPHA — Not available to US residents. AI resolution in active development — verify criteria carefully. No refunds. Max bet 10 LCAI.
         </div>
         {/* ROW 4 — Neon sign */}
         <div className="flex justify-center items-center py-0 border-t border-white/5">
@@ -648,19 +655,16 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
             </button>
           </div>
         </section>
-
         <div className="mb-10 grid grid-cols-3 gap-3">
           {[
-            { label: "Open Markets", value: markets.filter((m) => m.status === 0).length.toString() },
-            { label: "Total Volume", value: totalVolume.toFixed(1) + " LCAI" },
-            { label: "AI Resolved", value: (totalMarketCount > 0 ? totalMarketCount - markets.filter((m) => m.status === 0).length : markets.filter((m) => m.status === 3).length).toString() },
+            { label: "Open Markets", value: markets.filter((m) => m.status === 0).length, suffix: "" },
+            { label: "Total Volume", value: Math.round(totalVolume * 10) / 10, suffix: " LCAI" },
+            { label: "AI Resolved", value: totalMarketCount > 0 ? totalMarketCount - markets.filter((m) => m.status === 0).length : markets.filter((m) => m.status === 3).length, suffix: "" },
           ].map((s) => (
-            <div
-              key={s.label}
-              className="rounded-2xl border border-[#7B61FF]/20 bg-[#7B61FF]/5 p-4 text-center"
-            >
-              <p className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-[#7B61FF] to-[#A855F7] bg-clip-text text-transparent">
-                {s.value}
+            <div key={s.label} className="rounded-2xl border border-[#7B61FF]/20 bg-[#7B61FF]/5 p-4 text-center relative overflow-hidden group hover:border-[#7B61FF]/40 transition-all">
+              <div className="absolute inset-0 bg-gradient-to-br from-[#7B61FF]/5 to-transparent opacity-0 group-hover:opacity-100 transition-all" />
+              <p className="text-xl sm:text-3xl font-bold bg-gradient-to-r from-[#7B61FF] to-[#A855F7] bg-clip-text text-transparent tabular-nums">
+                {s.value}{s.suffix}
               </p>
               <p className="mt-1 text-[11px] text-[#8B80A8]">{s.label}</p>
             </div>
@@ -710,11 +714,34 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
               </button>
             </div>
 
+              {browseFilter === "open" && !loading && markets.filter(m => m.status === 0 && m.totalPool > 0).length > 0 && (
+                <div className="mb-4">
+                  <h3 className="text-xs font-semibold text-[#8B80A8] uppercase tracking-wider mb-3">🔥 Featured Markets</h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {markets.filter(m => m.status === 0 && m.totalPool > 0).sort((a, b) => b.totalPool - a.totalPool).slice(0, 3).map(m => {
+                      const cat = getCategory(m.question);
+                      return (
+                        <div key={m.id} onClick={() => { setActiveMarket(m.id); setActiveTab("browse"); setBrowseFilter("open"); }} className={`rounded-xl border p-3 cursor-pointer hover:border-[#7B61FF]/40 transition-all ${cat.color}`}>
+                          <span className="text-[10px] font-semibold">{cat.emoji} {cat.label}</span>
+                          <p className="text-xs font-semibold text-white mt-1 line-clamp-2">{m.question}</p>
+                          <p className="text-[10px] text-[#8B80A8] mt-1">Pool: {m.totalPool.toFixed(1)} LCAI</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             <div className="flex flex-col gap-4">
               {loading && (
-                <div className="text-center py-10">
-                  <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-[#7B61FF] border-t-transparent mb-2" />
-                  <p className="text-sm text-[#8B80A8]">Loading markets from chain...</p>
+                <div className="flex flex-col gap-4">
+                  {[1,2,3].map(i => (
+                    <div key={i} className="rounded-2xl border border-white/10 p-5 animate-pulse">
+                      <div className="h-4 bg-white/10 rounded w-3/4 mb-3" />
+                      <div className="h-3 bg-white/5 rounded w-1/2 mb-4" />
+                      <div className="h-8 bg-white/5 rounded mb-2" />
+                      <div className="h-3 bg-white/5 rounded w-1/4" />
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -746,14 +773,12 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
 className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-all relative overflow-hidden ${
   isActive
     ? "border-[#7B61FF]/60 bg-[#7B61FF]/5 shadow-[0_0_20px_rgba(123,97,255,0.2)]"
-    : `border-white/10 hover:border-[#7B61FF]/40 hover:shadow-[0_0_20px_rgba(123,97,255,0.15)] ${
-        getCategory(m.question).label === "Crypto" ? "bg-yellow-500/3" :
-        getCategory(m.question).label === "Sports" ? "bg-green-500/3" :
-        getCategory(m.question).label === "Weather" ? "bg-blue-500/3" :
-        getCategory(m.question).label === "Politics" ? "bg-red-500/3" :
-        getCategory(m.question).label === "AI & Tech" ? "bg-purple-500/3" :
-        "bg-white/3"
-      }`
+    : getCategory(m.question).label === "Crypto" ? "border-yellow-500/20 bg-yellow-500/5 hover:border-yellow-500/40 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)]"
+    : getCategory(m.question).label === "Sports" ? "border-green-500/20 bg-green-500/5 hover:border-green-500/40 hover:shadow-[0_0_20px_rgba(34,197,94,0.15)]"
+    : getCategory(m.question).label === "Weather" ? "border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)]"
+    : getCategory(m.question).label === "Politics" ? "border-red-500/20 bg-red-500/5 hover:border-red-500/40 hover:shadow-[0_0_20px_rgba(239,68,68,0.15)]"
+    : getCategory(m.question).label === "AI & Tech" ? "border-purple-500/20 bg-purple-500/5 hover:border-purple-500/40 hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]"
+    : "border-white/10 bg-white/3 hover:border-[#7B61FF]/40 hover:shadow-[0_0_20px_rgba(123,97,255,0.15)]"
 }`}
                   >
                     <div className="flex items-start justify-between gap-3 mb-3">
@@ -841,13 +866,7 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
       <div className="text-[10px] text-[#8B80A8] mt-1">
         <span>AI said: "{resolution.aiResponse}" · </span>
         
-        <a
-          target="_blank"
-          rel="noreferrer"
-          className="text-[#7B61FF] hover:underline"
-        >
-          View resolver →
-        </a>
+        <a href={`https://mainnet.lightscan.app/tx/${resolution.attestationHash}`} target="_blank" rel="noreferrer" className="text-[#7B61FF] hover:underline">View resolver →</a>
       </div>
     )}
   </div>
@@ -1015,6 +1034,9 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
                     {isActive && m.status !== 0 && isOwner && (
                       <div onClick={(e) => e.stopPropagation()} className="mt-3 flex flex-col gap-2">
                         <p className="text-[10px] text-[#8B80A8] font-semibold">👑 Owner Controls</p>
+                        <button onClick={(e) => { e.stopPropagation(); setHiddenMarkets(prev => { const next = new Set(prev); if (next.has(m.id)) next.delete(m.id); else next.add(m.id); return next; }); }} className="w-full rounded-xl border border-gray-500/30 bg-gray-500/10 py-2 text-xs font-semibold text-gray-400 hover:bg-gray-500/20 transition-all">
+                          {hiddenMarkets.has(m.id) ? "👁 Unhide Market" : "🙈 Hide Market"}
+                        </button>
                         <div className="flex gap-2">
                           <button onClick={() => manualResolve(m.id, 1)} disabled={txPending || m.status === 3} className="flex-1 rounded-xl border border-green-500/30 bg-green-500/10 py-2 text-xs font-semibold text-green-400 disabled:opacity-40 hover:bg-green-500/20 transition-all">✅ Resolve YES</button>
                           <button onClick={() => manualResolve(m.id, 2)} disabled={txPending || m.status === 3} className="flex-1 rounded-xl border border-red-500/30 bg-red-500/10 py-2 text-xs font-semibold text-red-400 disabled:opacity-40 hover:bg-red-500/20 transition-all">❌ Resolve NO</button>
@@ -1207,7 +1229,7 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
             </div>
             <div className="mb-5 rounded-xl border border-yellow-500/20 bg-yellow-500/5 p-3 text-xs text-yellow-400">⚠ Only Yes/No markets available. Live in-game sports markets may not resolve accurately — use specific verifiable criteria with clear YES/NO conditions.</div>
             {!wallet?(
-              <button onClick={connectWallet} className="w-full rounded-xl border border-[#7B61FF]/50 bg-[#7B61FF]/10 py-3 text-sm font-bold text-[#A78BFA] mb-4">Connect Wallet First — Best on Desktop with MetaMask</button>
+              <button onClick={connectWallet} className="w-full rounded-xl border border-[#7B61FF]/50 bg-[#7B61FF]/10 py-3 text-sm font-bold text-[#A78BFA] mb-4">Connect Wallet First</button>
             ):(
               <button onClick={createMarket} disabled={txPending} className="w-full rounded-xl bg-gradient-to-r from-[#7B61FF] to-[#A855F7] py-3 text-sm font-bold text-white shadow-[0_0_18px_rgba(123,97,255,0.45)] disabled:opacity-40 transition-all">
                 {txPending?"Deploying...":"✦ Deploy Market on LCAI Mainnet (1 LCAI fee)"}
