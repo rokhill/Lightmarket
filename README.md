@@ -8,7 +8,7 @@ Every outcome is resolved by verifiable on-chain LCAI inference — no human ora
 📦 **dApp Hub:** https://hub.lightchain.ai  
 🔗 **Explorer:** https://mainnet.lightscan.app  
 🐛 **Report Issues:** https://github.com/rokhill/Lightmarket/issues  
-💬 **Community:** LCAI Discord `#lightmarket` channel  
+💬 **Discord:** https://discord.gg/UnGgSTjH
 
 ---
 
@@ -101,7 +101,7 @@ On resolved markets, click **🚨 Request Human Review** to flag the market for 
 Open a detailed bug report at: https://github.com/rokhill/Lightmarket/issues
 
 ### Option 4 — Discord
-Join the LCAI Discord and post in `#lightmarket` channel.
+Join the LightMarket Discord: https://discord.gg/UnGgSTjH
 
 **When reporting please include:**
 - Market ID (shown on every card as "Market #N")
