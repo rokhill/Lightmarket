@@ -390,16 +390,17 @@ let filtered = [...markets].sort((a, b) => b.id - a.id);
       setTxPending(false);
     }
   };
-
   const createMarket = async () => {
     if (!wallet) {
       showToast("Connect wallet first", "error");
-    const last24h = Date.now() - 86400000;
-    const recentMarkets = markets.filter(m => m.creator?.toLowerCase() === wallet?.toLowerCase() && m.id > 0).length;
-    if (recentMarkets >= 10) {
-      showToast("Maximum 10 markets per wallet per day during alpha", "error");
       return;
     }
+    const storageKey = `markets_created_${wallet?.toLowerCase()}`;
+    const stored = JSON.parse(localStorage.getItem(storageKey) || "[]");
+    const last24h = Date.now() - 86400000;
+    const recentMarkets = stored.filter((t: number) => t > last24h);
+    if (recentMarkets.length >= 10) {
+      showToast("Maximum 10 markets per wallet per 24 hours during alpha", "error");
       return;
     }
     if (!mktQuestion.trim()) {
@@ -431,7 +432,7 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
       setTxPending(true);
       const signer = await getSigner();
       const contract = getLightMarket(signer);
-      const resolvesAt = closesAt + 3600;
+      const resolvesAt = closesAt + 300;
       // Send 1 LCAI creation fee to treasury
       const treasuryTx = await signer.sendTransaction({
         to: "0x8EC6fAd1CE9Bf18bfc98Ed5b9dCf14dfCFe155FB",
@@ -449,6 +450,10 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
       showToast("Deploying market...");
       await tx.wait();
       showToast("Market deployed on LCAI mainnet!");
+      const storageKey = `markets_created_${wallet?.toLowerCase()}`;
+      const stored = JSON.parse(localStorage.getItem(storageKey) || "[]");
+      stored.push(Date.now());
+      localStorage.setItem(storageKey, JSON.stringify(stored));
       setMktQuestion("");
       setMktCriteria("");
       setEndDate("");
@@ -961,6 +966,14 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
                     </div>
 
                     {isActive && m.status === 0 && (
+                      <div onClick={(e) => e.stopPropagation()} className="mt-4">
+                      {(m.closesAtTs - now) < 600 && (m.closesAtTs - now) > 0 ? (
+                        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-center">
+                          <p className="text-2xl mb-2">🎰</p>
+                          <p className="text-sm font-bold text-red-400">No More Bets!</p>
+                          <p className="text-xs text-[#8B80A8] mt-1">Market closing in {Math.floor((m.closesAtTs - now) / 60)}m {(m.closesAtTs - now) % 60}s — resolver starting soon</p>
+                        </div>
+                      ) : (
                       <div
                         onClick={(e) => e.stopPropagation()}
                         className="mt-4 rounded-xl border border-[#7B61FF]/30 bg-black/40 p-4"
@@ -1015,8 +1028,9 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
                         >
                           {txPending ? "Confirming..." : "Place Bet on LCAI"}
                         </button>
-
-                        {isOwner && (
+                      </div>
+                      )}
+                      {isOwner && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1205,6 +1219,66 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
             </div>
             <div className="mb-5">
               <label className="mb-2 block text-xs text-[#8B80A8]">Resolution Criteria</label>
+              {mktCategory && (
+                <div className="flex gap-2 mb-2 flex-wrap">
+                  {mktCategory === "crypto" && [
+                    {l:"BTC Price", t:"Check the current BTC/USD price on Binance at close time. If BTC is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."},
+                    {l:"ETH Price", t:"Check the current ETH/USD price on Binance at close time. If ETH is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."},
+                    {l:"LCAI Price", t:"Check the current LCAI/USD price on CoinGecko at close time. If LCAI is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-[#7B61FF]/30 bg-[#7B61FF]/10 px-2 py-1 text-[10px] text-[#A78BFA] hover:bg-[#7B61FF]/20 transition-all">📋 {t.l}</button>)}
+                  {mktCategory === "sports" && [
+                    {l:"Game Result", t:"Search TheSportsDB and ESPN for the game result between TEAM1 and TEAM2 on DATE. If TEAM1 won answer YES, otherwise NO. Cite the final score and source."},
+                    {l:"Championship", t:"Search for the YEAR CHAMPIONSHIP NAME winner. If TEAM/PLAYER won answer YES, otherwise NO. Cite your source."},
+                    {l:"Player Status", t:"Search for PLAYER NAME current status in SPORT in YEAR. If actively playing answer YES, otherwise NO. Cite your source."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-green-500/30 bg-green-500/10 px-2 py-1 text-[10px] text-green-400 hover:bg-green-500/20 transition-all">📋 {t.l}</button>)}
+                  {mktCategory === "weather" && [
+                    {l:"Temperature", t:"Search current temperature in CITY in Fahrenheit using weather data at close time. If above TARGET_TEMP°F answer YES, otherwise NO. Cite the exact temperature found."},
+                    {l:"Rain", t:"Search current weather conditions in CITY at close time. If it is currently raining or precipitation is occurring answer YES, otherwise NO. Cite your source."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-400 hover:bg-blue-500/20 transition-all">📋 {t.l}</button>)}
+                  {mktCategory === "current" && [
+                    {l:"Current Event", t:"Search for TOPIC in MONTH YEAR. If confirmed true answer YES, otherwise NO. Cite your source and date of information."},
+                    {l:"Person Role", t:"Search for current role of PERSON NAME in MONTH YEAR. If they hold POSITION answer YES, otherwise NO. Cite your source."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/20 transition-all">📋 {t.l}</button>)}
+                  {mktCategory === "ai" && [
+                    {l:"AI Product", t:"Search for PRODUCT NAME availability status in MONTH YEAR. If publicly available answer YES, otherwise NO. Cite your source."},
+                    {l:"Tech Release", t:"Search for PRODUCT NAME release status in MONTH YEAR. If officially released answer YES, otherwise NO. Cite your source."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-[10px] text-purple-400 hover:bg-purple-500/20 transition-all">📋 {t.l}</button>)}
+                  {mktCategory === "general" && [
+                    {l:"Fact Check", t:"Search for TOPIC. Based on scientific consensus and available data, if the answer is YES answer YES, otherwise NO. Cite your source."},
+                    {l:"Comparison", t:"Search for comparison between ITEM1 and ITEM2. If ITEM1 is larger/higher/more than ITEM2 answer YES, otherwise NO. Cite your source."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-white/20 bg-white/5 px-2 py-1 text-[10px] text-[#8B80A8] hover:bg-white/10 transition-all">📋 {t.l}</button>)}
+                </div>
+              )}
+              {mktCategory && (
+                <div className="flex gap-2 mb-2 flex-wrap">
+                  {mktCategory === "crypto" && [
+                    {l:"BTC Price", t:"Check the current BTC/USD price on Binance at close time. If BTC is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."},
+                    {l:"ETH Price", t:"Check the current ETH/USD price on Binance at close time. If ETH is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."},
+                    {l:"LCAI Price", t:"Check the current LCAI/USD price on CoinGecko at close time. If LCAI is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-[#7B61FF]/30 bg-[#7B61FF]/10 px-2 py-1 text-[10px] text-[#A78BFA] hover:bg-[#7B61FF]/20 transition-all">📋 {t.l}</button>)}
+                  {mktCategory === "sports" && [
+                    {l:"Game Result", t:"Search TheSportsDB and ESPN for the game result between TEAM1 and TEAM2 on DATE. If TEAM1 won answer YES, otherwise NO. Cite the final score and source."},
+                    {l:"Championship", t:"Search for the YEAR CHAMPIONSHIP NAME winner. If TEAM/PLAYER won answer YES, otherwise NO. Cite your source."},
+                    {l:"Player Status", t:"Search for PLAYER NAME current status in SPORT in YEAR. If actively playing answer YES, otherwise NO. Cite your source."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-green-500/30 bg-green-500/10 px-2 py-1 text-[10px] text-green-400 hover:bg-green-500/20 transition-all">📋 {t.l}</button>)}
+                  {mktCategory === "weather" && [
+                    {l:"Temperature", t:"Search current temperature in CITY in Fahrenheit using weather data at close time. If above TARGET_TEMP°F answer YES, otherwise NO. Cite the exact temperature found."},
+                    {l:"Rain", t:"Search current weather conditions in CITY at close time. If it is currently raining or precipitation is occurring answer YES, otherwise NO. Cite your source."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-400 hover:bg-blue-500/20 transition-all">📋 {t.l}</button>)}
+                  {mktCategory === "current" && [
+                    {l:"Current Event", t:"Search for TOPIC in MONTH YEAR. If confirmed true answer YES, otherwise NO. Cite your source and date of information."},
+                    {l:"Person Role", t:"Search for current role of PERSON NAME in MONTH YEAR. If they hold POSITION answer YES, otherwise NO. Cite your source."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/20 transition-all">📋 {t.l}</button>)}
+                  {mktCategory === "ai" && [
+                    {l:"AI Product", t:"Search for PRODUCT NAME availability status in MONTH YEAR. If publicly available answer YES, otherwise NO. Cite your source."},
+                    {l:"Tech Release", t:"Search for PRODUCT NAME release status in MONTH YEAR. If officially released answer YES, otherwise NO. Cite your source."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-[10px] text-purple-400 hover:bg-purple-500/20 transition-all">📋 {t.l}</button>)}
+                  {mktCategory === "general" && [
+                    {l:"Fact Check", t:"Search for TOPIC. Based on scientific consensus and available data, if the answer is YES answer YES, otherwise NO. Cite your source."},
+                    {l:"Comparison", t:"Search for comparison between ITEM1 and ITEM2. If ITEM1 is larger/higher/more than ITEM2 answer YES, otherwise NO. Cite your source."}
+                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-white/20 bg-white/5 px-2 py-1 text-[10px] text-[#8B80A8] hover:bg-white/10 transition-all">📋 {t.l}</button>)}
+                </div>
+              )}
               <textarea value={mktCriteria} onChange={(e)=>setMktCriteria(e.target.value)} rows={3}
                 placeholder={mktCategory==="crypto"?"e.g. Check the current BTC/USD price on CoinGecko. If above $80,000 answer YES, otherwise NO.":mktCategory==="weather"?"e.g. Search for current Chicago temperature. If above 70°F answer YES, otherwise NO.":mktCategory==="current"?"e.g. Search for the current US President. If Donald Trump answer YES, otherwise NO.":"e.g. Search for the answer. If confirmed answer YES, otherwise NO."}
                 className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder-gray-600 outline-none focus:border-[#7B61FF]/50 resize-none"/>
@@ -1262,7 +1336,7 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
       <footer className="relative z-10 border-t border-white/10 bg-black/20 backdrop-blur-xl">
         <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between flex-wrap gap-2">
           <p className="text-[10px] text-[#8B80A8]">
-            Powered by LightchainAI · AI-Native Prediction Markets
+            Powered by LightchainAI · AI-Native Prediction Markets · <a href="https://discord.gg/UnGgSTjH" target="_blank" rel="noreferrer" className="hover:text-[#7B61FF] transition-all">Discord</a> · <a href="https://github.com/rokhill/Lightmarket/issues" target="_blank" rel="noreferrer" className="hover:text-[#7B61FF] transition-all">Report Issue</a>
           </p>
           <p className="text-[10px] text-[#4B4560] font-mono hidden sm:block">
             {CONTRACTS.LightMarket.slice(0, 10)}...
