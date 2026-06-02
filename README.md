@@ -2,7 +2,7 @@
 
 **The first AI-native prediction market on LightchainAI.**
 
-Every outcome is resolved by verifiable on-chain LCAI inference and anchored with a Proof of Inference attestation. Owner safeguards remain during alpha and will be progressively removed as the resolver proves out — full decentralization is on our roadmap.
+Every outcome is resolved by verifiable on-chain LCAI inference and anchored with a Proof of Intelligence attestation. Owner safeguards remain during alpha and will be progressively removed as the resolver proves out — full decentralization is on our roadmap.
 
 🌐 **Live dApp:** https://lightmarket-frontend.vercel.app  
 📦 **dApp Hub:** https://hub.lightchain.ai  
@@ -14,7 +14,7 @@ Every outcome is resolved by verifiable on-chain LCAI inference and anchored wit
 
 ## What is LightMarket?
 
-LightMarket is a decentralized prediction market built natively on the LightchainAI (LCAI) blockchain. Users create YES/NO prediction markets on any topic — crypto prices, sports results, current events, weather, politics, AI developments, and more. When a market closes, the outcome is automatically determined by native LCAI AI inference and anchored on-chain with a Proof of Inference (PoI) attestation.
+LightMarket is a decentralized prediction market built natively on the LightchainAI (LCAI) blockchain. Users create YES/NO prediction markets on any topic — crypto prices, sports results, current events, weather, politics, AI developments, and more. When a market closes, the outcome is automatically determined by native LCAI AI inference and anchored on-chain with a Proof of Intelligence (PoI) attestation.
 
 **No human oracles. No manual resolution. Every result is verifiable on-chain.**
 
