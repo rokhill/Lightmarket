@@ -6,6 +6,8 @@ import {
   getProvider,
   getSigner,
   getLightMarket,
+  getFeePool,
+  getMarketFactory,
   switchToLCAI,
   formatLCAI,
   parseLCAI,
@@ -35,6 +37,10 @@ export default function Home() {
   const [mktCategory, setMktCategory] = useState("general");
   const [mktQuestion, setMktQuestion] = useState("");
   const [mktCriteria, setMktCriteria] = useState("");
+  const [mktLeague, setMktLeague] = useState("");
+  const [feeBalance, setFeeBalance] = useState("0");
+  const [creationPaused, setCreationPaused] = useState(false);
+  const [ownerBusy, setOwnerBusy] = useState(false);
   const [txPending, setTxPending] = useState(false);
   const [endDate, setEndDate] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -411,6 +417,10 @@ let filtered = [...markets].sort((a, b) => b.id - a.id);
       showToast("Enter resolution criteria", "error");
       return;
     }
+    if (mktCategory === "sports" && !mktLeague) {
+      showToast("Select a league for sports markets", "error");
+      return;
+    }
     if (!endDate || !endTime) {
       showToast("Select end date and time", "error");
       return;
@@ -456,6 +466,7 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
       localStorage.setItem(storageKey, JSON.stringify(stored));
       setMktQuestion("");
       setMktCriteria("");
+      setMktLeague("");
       setEndDate("");
       setEndTime("");
       setActiveTab("browse");
@@ -500,8 +511,81 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
       ? "text-red-400"
       : "text-yellow-400";
 
+  const ownerTogglePause = async () => {
+    try {
+      setOwnerBusy(true);
+      const signer = await getSigner();
+      const mf = getMarketFactory(signer);
+      const tx = await mf.pauseCreation(!creationPaused);
+      await tx.wait();
+      showToast(creationPaused ? "Creation resumed" : "Creation paused");
+      await loadOwnerData();
+    } catch (e: any) { showToast(e?.message?.slice(0,60) || "Failed", "error"); }
+    finally { setOwnerBusy(false); }
+  };
+
+  const ownerDistribute = async () => {
+    try {
+      setOwnerBusy(true);
+      const signer = await getSigner();
+      const fp = getFeePool(signer);
+      const tx = await fp.distributeFees();
+      await tx.wait();
+      showToast("Fees distributed to treasury");
+      await loadOwnerData();
+    } catch (e: any) { showToast(e?.message?.slice(0,60) || "Failed", "error"); }
+    finally { setOwnerBusy(false); }
+  };
+
+  const ownerEmergencyWithdraw = async () => {
+    if (!confirm("Emergency withdraw ENTIRE FeePool balance to treasury?")) return;
+    try {
+      setOwnerBusy(true);
+      const signer = await getSigner();
+      const fp = getFeePool(signer);
+      const tx = await fp.emergencyWithdraw();
+      await tx.wait();
+      showToast("Emergency withdrawal complete");
+      await loadOwnerData();
+    } catch (e: any) { showToast(e?.message?.slice(0,60) || "Failed", "error"); }
+    finally { setOwnerBusy(false); }
+  };
+
+  const ownerCancelAllOpen = async () => {
+    if (!confirm("Cancel ALL open markets and refund everyone?")) return;
+    try {
+      setOwnerBusy(true);
+      const signer = await getSigner();
+      const contract = getLightMarket(signer);
+      const open = markets.filter((m) => m.status === 0);
+      for (const m of open) {
+        try { const tx = await contract.cancelMarket(m.id, "Emergency cancel by owner"); await tx.wait(); }
+        catch (e) { console.error("cancel failed for", m.id, e); }
+      }
+      showToast(`Cancelled ${open.length} open market(s)`);
+      await loadOwnerData();
+    } catch (e: any) { showToast(e?.message?.slice(0,60) || "Failed", "error"); }
+    finally { setOwnerBusy(false); }
+  };
+
+  const loadOwnerData = async () => {
+    try {
+      const provider = await getProvider();
+      const fp = getFeePool(provider);
+      const bal = await fp.getBalance();
+      setFeeBalance(formatLCAI(bal));
+      const mf = getMarketFactory(provider);
+      const paused = await mf.marketCreationPaused();
+      setCreationPaused(paused);
+    } catch (e) { console.error("loadOwnerData failed", e); }
+  };
+
   const isOwner =
     wallet?.toLowerCase() === OWNER_ADDRESS.toLowerCase();
+
+  useEffect(() => {
+    if (isOwner && activeTab === "create") loadOwnerData();
+  }, [isOwner, activeTab]);
 
   const portfolioWithStatus = portfolio.map((p) => {
     const market = markets.find((m) => m.id === p.marketId);
@@ -871,7 +955,7 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
       <div className="text-[10px] text-[#8B80A8] mt-1">
         <span>AI said: "{resolution.aiResponse}" · </span>
         
-        <a href={`https://mainnet.lightscan.app/tx/${resolution.attestationHash}`} target="_blank" rel="noreferrer" className="text-[#7B61FF] hover:underline">View resolver →</a>
+        <a href={`https://mainnet.lightscan.app/address/0x035a5e662eF1B9379A96eD3D19fCb8Bc74680597`} target="_blank" rel="noreferrer" className="text-[#7B61FF] hover:underline">View resolver →</a>
       </div>
     )}
   </div>
@@ -1196,18 +1280,40 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
 
         {activeTab === "create" && (
           <div className="rounded-2xl border border-[#7B61FF]/20 bg-[#7B61FF]/3 p-6 backdrop-blur-xl">
+            {isOwner && (
+              <div className="mb-6 rounded-xl border border-orange-500/30 bg-orange-500/5 p-4">
+                <p className="text-sm font-bold text-orange-300 mb-2">🛠 Owner Controls</p>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="rounded-lg bg-black/30 p-3">
+                    <p className="text-[#8B80A8]">FeePool Balance</p>
+                    <p className="text-lg font-bold text-white">{feeBalance} LCAI</p>
+                  </div>
+                  <div className="rounded-lg bg-black/30 p-3">
+                    <p className="text-[#8B80A8]">Market Creation</p>
+                    <p className={`text-lg font-bold ${creationPaused ? "text-red-400" : "text-green-400"}`}>{creationPaused ? "PAUSED" : "ACTIVE"}</p>
+                  </div>
+                </div>
+                <button onClick={loadOwnerData} className="mt-3 rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-[10px] text-[#8B80A8] hover:text-white transition-all">↻ Refresh</button>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button onClick={ownerTogglePause} disabled={ownerBusy} className="rounded-lg border border-yellow-500/30 bg-yellow-500/10 py-2 text-xs font-semibold text-yellow-400 disabled:opacity-40 hover:bg-yellow-500/20 transition-all">{creationPaused ? "Resume Creation" : "Pause Creation"}</button>
+                  <button onClick={ownerDistribute} disabled={ownerBusy} className="rounded-lg border border-green-500/30 bg-green-500/10 py-2 text-xs font-semibold text-green-400 disabled:opacity-40 hover:bg-green-500/20 transition-all">Distribute Fees</button>
+                  <button onClick={ownerCancelAllOpen} disabled={ownerBusy} className="rounded-lg border border-orange-500/30 bg-orange-500/10 py-2 text-xs font-semibold text-orange-400 disabled:opacity-40 hover:bg-orange-500/20 transition-all">Cancel All Open</button>
+                  <button onClick={ownerEmergencyWithdraw} disabled={ownerBusy} className="rounded-lg border border-red-500/40 bg-red-500/10 py-2 text-xs font-semibold text-red-400 disabled:opacity-40 hover:bg-red-500/20 transition-all">⚠ Emergency Withdraw</button>
+                </div>
+              </div>
+            )}
             <h3 className="text-base font-bold text-[#E0D7FF] mb-5">Create a Prediction Market</h3>
             <div className="mb-5">
               <label className="mb-2 block text-xs text-[#8B80A8]">Market Category</label>
               <div className="grid grid-cols-3 gap-2 mb-1">
-                {[{key:"crypto",label:"💰 Crypto",hint:"BTC, ETH, LCAI prices"},{key:"general",label:"🧠 General",hint:"Facts, science, history"},{key:"current",label:"📰 Current Events",hint:"News, politics, sports"},{key:"weather",label:"🌤 Weather",hint:"Temperature, conditions"},{key:"ai",label:"🤖 AI & Tech",hint:"Models, launches, products"},{key:"custom",label:"✦ Custom",hint:"Anything else"}].map((cat)=>(
+                {[{key:"crypto",label:"💰 Crypto",hint:"BTC, ETH, LCAI prices"},{key:"general",label:"🧠 General",hint:"Facts, science, history"},{key:"current",label:"📰 Current Events",hint:"News, politics"},{key:"sports",label:"🏆 Sports",hint:"Games, matches, scores"},{key:"weather",label:"🌤 Weather",hint:"Temperature, conditions"},{key:"ai",label:"🤖 AI & Tech",hint:"Models, launches, products"},{key:"custom",label:"✦ Custom",hint:"Anything else"}].map((cat)=>(
                   <button key={cat.key} onClick={()=>setMktCategory(cat.key)} className={`rounded-xl border p-2 text-left transition-all ${mktCategory===cat.key?"border-[#7B61FF] bg-[#7B61FF]/20":"border-white/10 bg-white/3 hover:border-white/20"}`}>
                     <p className="text-xs font-semibold text-white">{cat.label}</p>
                     <p className="text-[10px] text-[#8B80A8]">{cat.hint}</p>
                   </button>
                 ))}
               </div>
-              {mktCategory==="crypto"&&<p className="text-[10px] text-green-400 mt-1">✓ AI will use live price data from Binance/CoinGecko</p>}
+              {mktCategory==="crypto"&&<p className="text-[10px] text-green-400 mt-1">✓ AI will use live close-time price data from Kraken, Coinbase & CoinGecko</p>}
               {mktCategory==="weather"&&<p className="text-[10px] text-yellow-400 mt-1">⚠ Be very specific about location and time</p>}
               {mktCategory==="current"&&<p className="text-[10px] text-blue-400 mt-1">✓ AI will search the web for current information</p>}
             </div>
@@ -1219,64 +1325,47 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
             </div>
             <div className="mb-5">
               <label className="mb-2 block text-xs text-[#8B80A8]">Resolution Criteria</label>
-              {mktCategory && (
+              {mktCategory && mktCategory !== "sports" && (
                 <div className="flex gap-2 mb-2 flex-wrap">
                   {mktCategory === "crypto" && [
-                    {l:"BTC Price", t:"Check the current BTC/USD price on Binance at close time. If BTC is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."},
-                    {l:"ETH Price", t:"Check the current ETH/USD price on Binance at close time. If ETH is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."},
-                    {l:"LCAI Price", t:"Check the current LCAI/USD price on CoinGecko at close time. If LCAI is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."}
+                    {l:"BTC Price", t:"Check the BTC/USD price at close time. If BTC is above $TARGET answer YES, otherwise NO."},
+                    {l:"ETH Price", t:"Check the ETH/USD price at close time. If ETH is above $TARGET answer YES, otherwise NO."},
+                    {l:"LCAI Price", t:"Check the LCAI/USD price at close time. If LCAI is above $TARGET answer YES, otherwise NO."}
                   ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-[#7B61FF]/30 bg-[#7B61FF]/10 px-2 py-1 text-[10px] text-[#A78BFA] hover:bg-[#7B61FF]/20 transition-all">📋 {t.l}</button>)}
-                  {mktCategory === "sports" && [
-                    {l:"Game Result", t:"Search TheSportsDB and ESPN for the game result between TEAM1 and TEAM2 on DATE. If TEAM1 won answer YES, otherwise NO. Cite the final score and source."},
-                    {l:"Championship", t:"Search for the YEAR CHAMPIONSHIP NAME winner. If TEAM/PLAYER won answer YES, otherwise NO. Cite your source."},
-                    {l:"Player Status", t:"Search for PLAYER NAME current status in SPORT in YEAR. If actively playing answer YES, otherwise NO. Cite your source."}
-                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-green-500/30 bg-green-500/10 px-2 py-1 text-[10px] text-green-400 hover:bg-green-500/20 transition-all">📋 {t.l}</button>)}
                   {mktCategory === "weather" && [
-                    {l:"Temperature", t:"Search current temperature in CITY in Fahrenheit using weather data at close time. If above TARGET_TEMP°F answer YES, otherwise NO. Cite the exact temperature found."},
-                    {l:"Rain", t:"Search current weather conditions in CITY at close time. If it is currently raining or precipitation is occurring answer YES, otherwise NO. Cite your source."}
+                    {l:"Temperature", t:"Search current temperature in CITY. If above TARGET°F at close time answer YES, otherwise NO."},
+                    {l:"Rain", t:"Search current weather in CITY. If raining at close time answer YES, otherwise NO."}
                   ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-400 hover:bg-blue-500/20 transition-all">📋 {t.l}</button>)}
                   {mktCategory === "current" && [
-                    {l:"Current Event", t:"Search for TOPIC in MONTH YEAR. If confirmed true answer YES, otherwise NO. Cite your source and date of information."},
-                    {l:"Person Role", t:"Search for current role of PERSON NAME in MONTH YEAR. If they hold POSITION answer YES, otherwise NO. Cite your source."}
+                    {l:"Current Event", t:"Search for TOPIC. If confirmed true answer YES, otherwise NO. Cite source."},
+                    {l:"Person Role", t:"Search current role of PERSON. If they hold POSITION answer YES, otherwise NO."}
                   ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/20 transition-all">📋 {t.l}</button>)}
                   {mktCategory === "ai" && [
-                    {l:"AI Product", t:"Search for PRODUCT NAME availability status in MONTH YEAR. If publicly available answer YES, otherwise NO. Cite your source."},
-                    {l:"Tech Release", t:"Search for PRODUCT NAME release status in MONTH YEAR. If officially released answer YES, otherwise NO. Cite your source."}
+                    {l:"AI Product", t:"Search for PRODUCT availability. If publicly available answer YES, otherwise NO."},
+                    {l:"Tech Release", t:"Search for PRODUCT release. If officially released answer YES, otherwise NO."}
                   ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-[10px] text-purple-400 hover:bg-purple-500/20 transition-all">📋 {t.l}</button>)}
-                  {mktCategory === "general" && [
-                    {l:"Fact Check", t:"Search for TOPIC. Based on scientific consensus and available data, if the answer is YES answer YES, otherwise NO. Cite your source."},
-                    {l:"Comparison", t:"Search for comparison between ITEM1 and ITEM2. If ITEM1 is larger/higher/more than ITEM2 answer YES, otherwise NO. Cite your source."}
+                  {(mktCategory === "general" || mktCategory === "custom") && [
+                    {l:"Fact Check", t:"Search for TOPIC. If the answer is YES answer YES, otherwise NO. Cite source."},
+                    {l:"Comparison", t:"Compare ITEM1 and ITEM2. If ITEM1 is greater answer YES, otherwise NO. Cite source."}
                   ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-white/20 bg-white/5 px-2 py-1 text-[10px] text-[#8B80A8] hover:bg-white/10 transition-all">📋 {t.l}</button>)}
                 </div>
               )}
-              {mktCategory && (
-                <div className="flex gap-2 mb-2 flex-wrap">
-                  {mktCategory === "crypto" && [
-                    {l:"BTC Price", t:"Check the current BTC/USD price on Binance at close time. If BTC is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."},
-                    {l:"ETH Price", t:"Check the current ETH/USD price on Binance at close time. If ETH is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."},
-                    {l:"LCAI Price", t:"Check the current LCAI/USD price on CoinGecko at close time. If LCAI is above $TARGET_PRICE answer YES, otherwise NO. Cite the exact price found."}
-                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-[#7B61FF]/30 bg-[#7B61FF]/10 px-2 py-1 text-[10px] text-[#A78BFA] hover:bg-[#7B61FF]/20 transition-all">📋 {t.l}</button>)}
-                  {mktCategory === "sports" && [
-                    {l:"Game Result", t:"Search TheSportsDB and ESPN for the game result between TEAM1 and TEAM2 on DATE. If TEAM1 won answer YES, otherwise NO. Cite the final score and source."},
-                    {l:"Championship", t:"Search for the YEAR CHAMPIONSHIP NAME winner. If TEAM/PLAYER won answer YES, otherwise NO. Cite your source."},
-                    {l:"Player Status", t:"Search for PLAYER NAME current status in SPORT in YEAR. If actively playing answer YES, otherwise NO. Cite your source."}
-                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-green-500/30 bg-green-500/10 px-2 py-1 text-[10px] text-green-400 hover:bg-green-500/20 transition-all">📋 {t.l}</button>)}
-                  {mktCategory === "weather" && [
-                    {l:"Temperature", t:"Search current temperature in CITY in Fahrenheit using weather data at close time. If above TARGET_TEMP°F answer YES, otherwise NO. Cite the exact temperature found."},
-                    {l:"Rain", t:"Search current weather conditions in CITY at close time. If it is currently raining or precipitation is occurring answer YES, otherwise NO. Cite your source."}
-                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-blue-500/30 bg-blue-500/10 px-2 py-1 text-[10px] text-blue-400 hover:bg-blue-500/20 transition-all">📋 {t.l}</button>)}
-                  {mktCategory === "current" && [
-                    {l:"Current Event", t:"Search for TOPIC in MONTH YEAR. If confirmed true answer YES, otherwise NO. Cite your source and date of information."},
-                    {l:"Person Role", t:"Search for current role of PERSON NAME in MONTH YEAR. If they hold POSITION answer YES, otherwise NO. Cite your source."}
-                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-red-500/30 bg-red-500/10 px-2 py-1 text-[10px] text-red-400 hover:bg-red-500/20 transition-all">📋 {t.l}</button>)}
-                  {mktCategory === "ai" && [
-                    {l:"AI Product", t:"Search for PRODUCT NAME availability status in MONTH YEAR. If publicly available answer YES, otherwise NO. Cite your source."},
-                    {l:"Tech Release", t:"Search for PRODUCT NAME release status in MONTH YEAR. If officially released answer YES, otherwise NO. Cite your source."}
-                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-purple-500/30 bg-purple-500/10 px-2 py-1 text-[10px] text-purple-400 hover:bg-purple-500/20 transition-all">📋 {t.l}</button>)}
-                  {mktCategory === "general" && [
-                    {l:"Fact Check", t:"Search for TOPIC. Based on scientific consensus and available data, if the answer is YES answer YES, otherwise NO. Cite your source."},
-                    {l:"Comparison", t:"Search for comparison between ITEM1 and ITEM2. If ITEM1 is larger/higher/more than ITEM2 answer YES, otherwise NO. Cite your source."}
-                  ].map(t => <button key={t.l} type="button" onClick={() => setMktCriteria(t.t)} className="rounded-lg border border-white/20 bg-white/5 px-2 py-1 text-[10px] text-[#8B80A8] hover:bg-white/10 transition-all">📋 {t.l}</button>)}
+              {mktCategory === "sports" && (
+                <div className="mb-2">
+                  <select value={mktLeague} onChange={(e)=>{
+                    const lg = e.target.value; setMktLeague(lg);
+                    if(lg) setMktCriteria(`Resolve based on the official final result of the ${e.target.options[e.target.selectedIndex].text} match between the two competitors named in the question. [SPORT:${lg}]`);
+                  }} className="w-full rounded-xl border border-green-500/30 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-green-500/50">
+                    <option value="">Select league…</option>
+                    <option value="nba">NBA</option><option value="nfl">NFL</option>
+                    <option value="mlb">MLB</option><option value="nhl">NHL</option>
+                    <option value="wnba">WNBA</option><option value="ncaaf">NCAA Football</option>
+                    <option value="ncaab">NCAA Basketball</option><option value="mls">MLS</option>
+                    <option value="epl">Premier League</option><option value="laliga">La Liga</option>
+                    <option value="ucl">Champions League</option><option value="worldcup">World Cup</option>
+                    <option value="atp">Tennis (ATP)</option><option value="wta">Tennis (WTA)</option>
+                  </select>
+                  <p className="mt-1 text-[10px] text-green-400">✓ Picks the exact league so the resolver reads the real final score from ESPN. Name both teams/players in your question.</p>
                 </div>
               )}
               <textarea value={mktCriteria} onChange={(e)=>setMktCriteria(e.target.value)} rows={3}

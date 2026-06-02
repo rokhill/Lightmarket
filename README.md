@@ -2,7 +2,7 @@
 
 **The first AI-native prediction market on LightchainAI.**
 
-Every outcome is resolved by verifiable on-chain LCAI inference — no human oracles, no manual resolution, no trust required.
+Every outcome is resolved by verifiable on-chain LCAI inference and anchored with a Proof of Inference attestation. Owner safeguards remain during alpha and will be progressively removed as the resolver proves out — full decentralization is on our roadmap.
 
 🌐 **Live dApp:** https://lightmarket-frontend.vercel.app  
 📦 **dApp Hub:** https://hub.lightchain.ai  
@@ -116,34 +116,34 @@ Join the LightMarket Discord: https://discord.gg/UnGgSTjH
 ### Three-Tier Resolution
 1. **LCAI Inference (Primary)** — native on-chain AI workers (3 retry attempts, 3 min timeout each)
 2. **Groq Sanity Check (Secondary)** — verification layer using real-time data
-3. **Decision Logic:**
-   - LCAI + Groq agree → resolve with confidence ✅
-   - LCAI + Groq disagree → trust LCAI, flag for human review ⚠️
-   - Only LCAI answers → resolve with LCAI
-   - Only Groq answers → resolve with Groq fallback
-   - Both fail → flag as unresolvable, owner reviews
+3. **Safety-First Decision Logic:**
+   - Both agree, high/medium confidence → resolve ✅
+   - Low confidence, or AI returns UNKNOWN, or insufficient data → **auto-cancel + full refund** 🔄
+   - Disagreement at low confidence → auto-cancel + refund
+   - Principle: the resolver only settles a market when confident. When it cannot determine an outcome reliably, it refunds rather than guessing.
 
 ### Real-Time Data APIs
 The resolver enriches every prompt with live data before sending to LCAI:
 
 | API | Data | Key Required |
 |-----|------|-------------|
-| Binance | BTC, ETH, SOL prices | No |
-| CoinGecko | LCAI price, trending | No |
-| CryptoCompare | BTC, ETH fallback | No |
-| CoinCap | Crypto backup prices | No |
+| Kraken | BTC, ETH, SOL close-time prices | No |
+| Coinbase | BTC, ETH, SOL price fallback | No |
+| CryptoCompare | Minute-accurate price fallback | No |
+| CoinGecko | LCAI price + daily fallback | No |
+| ESPN | Live sports scores & results | No |
 | Open-Meteo | Weather for 10+ cities | No |
 | Tavily | Web search, current events | Yes |
-| TheSportsDB | Sports results, team data | No |
-| ESPN | NFL, NBA, MLB, NHL scores | No |
-| Ball Don't Lie | NBA stats | No |
 | Alpha Vantage | Stock prices | Yes |
 | NewsAPI | Current headlines | Yes |
 | Wikipedia | Facts verification | No |
 | World Bank | Economic data | No |
 
 ### Crypto Price Markets
-BTC, ETH, SOL, and LCAI markets bypass AI and use direct price API comparison for maximum accuracy. Supports both "above" and "below" price detection.
+BTC, ETH, SOL, and LCAI markets bypass AI entirely and resolve deterministically against the **price at market close** — not the price when the resolver happens to run. Prices come from multiple independent, US-accessible sources (Kraken → Coinbase → CryptoCompare → CoinGecko) with minute-level accuracy, so a market asking "above/below $X at close" is judged on the true close-time price.
+
+### Sports Markets
+Team-sport and tennis markets resolve deterministically from **ESPN's official final scores** — no AI guessing. Select the exact league at creation (NBA, NFL, MLB, NHL, WNBA, college, soccer, ATP/WTA). The resolver matches the named competitors to the finished game, reads the real winner, and settles. If it cannot confidently match exactly one finished game, it refunds rather than risk a wrong outcome.
 
 ---
 

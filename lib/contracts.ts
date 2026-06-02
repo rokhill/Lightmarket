@@ -46,6 +46,15 @@ export const AIRESOLVER_ABI = [
 export const MARKETFACTORY_ABI = [
   "function createBinaryMarket(string question, string resolutionCriteria, uint256 targetPrice, uint256 duration, uint256 resolutionDelay, uint256 creatorFeeBps) returns (uint256)",
   "function createPricePredictionMarket(string question, string resolutionCriteria, uint256 duration, uint256 resolutionDelay, uint256 creatorFeeBps) returns (uint256)",
+  "function pauseCreation(bool paused) external",
+  "function marketCreationPaused() view returns (bool)",
+];
+
+export const FEEPOOL_ABI = [
+  "function getBalance() view returns (uint256)",
+  "function treasury() view returns (address)",
+  "function distributeFees() external",
+  "function emergencyWithdraw() external",
 ];
 
 export async function getProvider() {
@@ -101,6 +110,10 @@ export function getAIResolver(signerOrProvider: any) {
 
 export function getMarketFactory(signerOrProvider: any) {
   return new ethers.Contract(CONTRACTS.MarketFactory, MARKETFACTORY_ABI, signerOrProvider);
+}
+
+export function getFeePool(signerOrProvider: any) {
+  return new ethers.Contract(CONTRACTS.FeePool, FEEPOOL_ABI, signerOrProvider);
 }
 
 export function formatLCAI(wei: bigint): string {
