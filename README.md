@@ -113,14 +113,17 @@ Join the LightMarket Discord: https://discord.gg/UnGgSTjH
 
 ## AI Resolution Engine
 
-### Three-Tier Resolution
-1. **LCAI Inference (Primary)** — native on-chain AI workers (3 retry attempts, 3 min timeout each)
-2. **Groq Sanity Check (Secondary)** — verification layer using real-time data
-3. **Safety-First Decision Logic:**
-   - Both agree, high/medium confidence → resolve ✅
-   - Low confidence, or AI returns UNKNOWN, or insufficient data → **auto-cancel + full refund** 🔄
-   - Disagreement at low confidence → auto-cancel + refund
-   - Principle: the resolver only settles a market when confident. When it cannot determine an outcome reliably, it refunds rather than guessing.
+### Evidence-Based Resolution
+LightMarket resolves markets like a courtroom, not a guess. The resolver:
+1. **Gathers verified live evidence** — current prices, official scores, web search results, and more, collected at resolution time from independent sources.
+2. **Presents the evidence to native LCAI inference as a case** — the on-chain AI is instructed to rule a verdict based ONLY on the verified live evidence, explicitly disregarding its own (potentially outdated) training. This is the key safeguard: the AI judges the present, not its memory.
+3. **Cross-checks with a second model (Groq)** judging the same evidence.
+4. **Safety-first verdict:**
+   - Clear verdict, sources agree → resolve ✅
+   - Evidence insufficient, contradictory, or AI returns UNKNOWN → **auto-cancel + full refund** 🔄
+   - Principle: the resolver only settles when the evidence makes the outcome clear. When it can't, it refunds rather than guessing.
+
+Deterministic market types (crypto prices, sports scores) bypass the AI entirely — see below.
 
 ### Real-Time Data APIs
 The resolver enriches every prompt with live data before sending to LCAI:
@@ -232,7 +235,7 @@ NEWS_API_KEY=your_newsapi_key
 ### Phase 1 — Alpha (Current ✅)
 - ✅ Core YES/NO prediction market contracts
 - ✅ Native LCAI inference resolution
-- ✅ Three-tier resolution (LCAI + Groq)
+- ✅ Evidence-based resolution (LCAI judges verified live data + Groq cross-check)
 - ✅ Multi-API real-time data enrichment
 - ✅ Frontend dApp on Vercel
 - ✅ Market categories with emoji badges
