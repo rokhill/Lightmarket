@@ -16,7 +16,7 @@ Every outcome is resolved by verifiable on-chain LCAI inference and anchored wit
 
 LightMarket is a decentralized prediction market built natively on the LightchainAI (LCAI) blockchain. Users create YES/NO prediction markets on any topic — crypto prices, sports results, current events, weather, politics, AI developments, and more. When a market closes, the outcome is automatically determined by native LCAI AI inference and anchored on-chain with a Proof of Intelligence (PoI) attestation.
 
-**No human oracles. No manual resolution. Every result is verifiable on-chain.**
+**Built for autonomous, verifiable resolution — every result is settled by LCAI inference and provable on-chain. Owner safeguards remain during alpha and are being phased out as the resolver proves out.**
 
 ---
 
@@ -123,7 +123,7 @@ LightMarket resolves markets like a courtroom, not a guess. The resolver:
    - Evidence insufficient, contradictory, or AI returns UNKNOWN → **auto-cancel + full refund** 🔄
    - Principle: the resolver only settles when the evidence makes the outcome clear. When it can't, it refunds rather than guessing.
 
-Deterministic market types (crypto prices, sports scores) bypass the AI entirely — see below.
+Crypto and sports markets gather hard data (close-time prices, official scores) and present it to LCAI as verified evidence to reason over — see below. Nothing bypasses the judge; the deterministic data simply makes the verdict unambiguous.
 
 ### Real-Time Data APIs
 The resolver enriches every prompt with live data before sending to LCAI:
@@ -143,10 +143,10 @@ The resolver enriches every prompt with live data before sending to LCAI:
 | World Bank | Economic data | No |
 
 ### Crypto Price Markets
-BTC, ETH, SOL, and LCAI markets bypass AI entirely and resolve deterministically against the **price at market close** — not the price when the resolver happens to run. Prices come from multiple independent, US-accessible sources (Kraken → Coinbase → CryptoCompare → CoinGecko) with minute-level accuracy, so a market asking "above/below $X at close" is judged on the true close-time price.
+BTC, ETH, SOL, and LCAI markets are resolved by LCAI reasoning over the **verified price at market close** — not the price when the resolver happens to run. Prices come from multiple independent, US-accessible sources (Kraken → Coinbase → CryptoCompare → CoinGecko) with minute-level accuracy, so a market asking "above/below $X at close" is judged on the true close-time price.
 
 ### Sports Markets
-Team-sport and tennis markets resolve deterministically from **ESPN's official final scores** — no AI guessing. Select the exact league at creation (NBA, NFL, MLB, NHL, WNBA, college, soccer, ATP/WTA). The resolver matches the named competitors to the finished game, reads the real winner, and settles. If it cannot confidently match exactly one finished game, it refunds rather than risk a wrong outcome.
+Team-sport and tennis markets are resolved by LCAI reasoning over **ESPN's official final scores** (only on an explicit league tag). Select the exact league at creation (NBA, NFL, MLB, NHL, WNBA, college, soccer, ATP/WTA). The resolver matches the named competitors to the finished game, reads the real winner, and settles. If it cannot confidently match exactly one finished game, it refunds rather than risk a wrong outcome.
 
 ---
 
@@ -171,7 +171,8 @@ Team-sport and tennis markets resolve deterministically from **ESPN's official f
 | Fee | Amount | Destination |
 |-----|--------|-------------|
 | Market Creation | 1 LCAI | Treasury |
-| Winner Fee | 1% of pool | Contract |
+| Platform Fee | 1% of pool | Platform |
+| Creator Fee | 0.5% of pool | Market creator |
 
 ---
 
@@ -207,26 +208,7 @@ npm run dev
 Open http://localhost:3000
 
 ### Resolver
-```bash
-cd resolver
-cp .env.example .env
-# Fill in your private key and API keys
-npm install
-node index.js
-```
-
-### Environment Variables (Resolver)
-```
-RESOLVER_PRIVATE_KEY=your_wallet_private_key
-LCAI_RPC=https://rpc.mainnet.lightchain.ai
-LIGHTMARKET_ADDRESS=0xa20f046945a362b713695BEC3896cedC954CF55A
-AIRESOLVER_ADDRESS=0x035a5e662eF1B9379A96eD3D19fCb8Bc74680597
-JOBREGISTRY_ADDRESS=0xfB15F90298e4CcD7106E76fFB5e520315cC42B0b
-GROQ_API_KEY=your_groq_key
-TAVILY_API_KEY=your_tavily_key
-ALPHA_VANTAGE_KEY=your_alpha_vantage_key
-NEWS_API_KEY=your_newsapi_key
-```
+The resolution engine is a proprietary off-chain service operated by the team during alpha. It watches markets, gathers verified live evidence, routes each market through LCAI inference for a reasoned verdict, and submits the LCAI-attested outcome on-chain. It is not open for third-party operation at this stage; decentralizing resolution is on the roadmap.
 
 ---
 
@@ -244,7 +226,7 @@ NEWS_API_KEY=your_newsapi_key
 - ✅ Human review request system
 - ✅ Report market button
 - ✅ Market creation fee (1 LCAI)
-- ✅ dApp Hub listing
+- 🔄 dApp Hub submission (pending review)
 - ✅ GitHub open source
 
 ### Phase 2 — Beta (Coming Soon)
