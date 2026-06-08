@@ -26,7 +26,7 @@ LightMarket is a decentralized prediction market built natively on the Lightchai
 1. Connect your MetaMask wallet to LCAI mainnet (Chain ID: 9200)
 2. Click **+ Create** and select a category
 3. Write your market question (e.g. "Will BTC be above $100,000 at close time?")
-4. Write clear resolution criteria (tip: use ChatGPT or Copilot to write good criteria)
+4. Write clear resolution criteria (tip: use the built-in "Ask LCAI Chat" helper to write a clean, resolvable question)
 5. Set market duration (minimum 55 minutes)
 6. Pay 1 LCAI creation fee
 7. Deploy to LCAI mainnet
@@ -41,10 +41,10 @@ LightMarket is a decentralized prediction market built natively on the Lightchai
 
 ### Resolution Flow
 When a market closes the resolver automatically:
-1. Fetches real-time data from multiple APIs
-2. Sends an enriched prompt to native LCAI inference (3 retries)
-3. Runs a Groq sanity check
-4. Submits the result on-chain with a PoI attestation
+1. Gathers verified live evidence — close-time prices, official scores, web search results — and labels each piece (e.g. a game as FINAL / SCHEDULED / IN PROGRESS, a price comparison as pre-computed)
+2. Presents the evidence to native LCAI inference as a case, instructing it to rule only on the verified evidence — not its own training (3 retries)
+3. Cross-checks the verdict with a second model (Groq) judging the same evidence
+4. If the evidence is clear and the models agree, submits the outcome on-chain with a PoI attestation; if the evidence is insufficient or contradictory, refunds rather than guessing
 5. Winners can claim their winnings immediately
 
 ### Claiming Winnings
@@ -69,9 +69,11 @@ When a market closes the resolver automatically:
 - **Load More** — paginated market loading (30 at a time)
 - **Report Market** — flag suspicious or incorrect markets directly from the card
 - **Countdown Timer** — see exactly how much time is left on open markets
+- **Leaderboard** — top predictors ranked by net profit, read live from chain (min 3 bets to qualify)
+- **Fee Transparency** — platform and creator fees shown on the bet screen before you confirm
 
 ### For Market Creators
-- **AI Suggestions** — use ChatGPT or Copilot to write resolution criteria
+- **AI Suggestions** — built-in "Ask LCAI Chat" link to help write a clear, resolvable question and criteria
 - **Category Selection** — choose from 6 market categories
 - **Category Badges** — auto-detected from market question keywords
 - **Clear Form** — reset the create form with one click
@@ -228,6 +230,7 @@ The resolution engine is a proprietary off-chain service operated by the team du
 - ✅ Market creation fee (1 LCAI)
 - 🔄 dApp Hub submission (pending review)
 - ✅ GitHub open source
+- ✅ Leaderboard — top predictors ranked by net profit
 
 ### Phase 2 — Beta (Coming Soon)
 - [ ] **Multiple market types** — range markets, multi-outcome markets
@@ -246,7 +249,6 @@ The resolution engine is a proprietary off-chain service operated by the team du
 - [ ] **N-of-M AI confirmation** for large pool markets
 - [ ] **Multi-language support**
 - [ ] **API for developers** — create/resolve markets programmatically
-- [ ] **Leaderboard** — top predictors on LCAI
 - [ ] **Achievements/badges** — gamification layer
 
 ### Phase 4 — DAO
