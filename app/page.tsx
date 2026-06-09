@@ -8,6 +8,7 @@ import {
   getLightMarket,
   getFeePool,
   getMarketFactory,
+  getAIResolver,
   switchToLCAI,
   formatLCAI,
   parseLCAI,
@@ -19,6 +20,8 @@ const OWNER_ADDRESS = "0x8EC6fAd1CE9Bf18bfc98Ed5b9dCf14dfCFe155FB";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("browse");
+  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [lbLoading, setLbLoading] = useState(false);
   const [browseFilter, setBrowseFilter] = useState("open");
   const [wallet, setWallet] = useState<string | null>(null);
   const [balance, setBalance] = useState<string>("0");
@@ -50,6 +53,7 @@ export default function Home() {
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [geoCountry, setGeoCountry] = useState<string | null>(null);
   const [loadOffset, setLoadOffset] = useState(30);
   const [totalMarketCount, setTotalMarketCount] = useState(0);
   const [totalVolume, setTotalVolume] = useState(0);
@@ -125,6 +129,16 @@ loadMarkets();
       const count = await contract.marketCount();
       const loaded = [];
       const resMap: Record<number, any> = {};
+      // Bulk-fetch resolution Tx hashes from AIResolver events (one query, mapped by marketId)
+      const resTxMap: Record<number, string> = {};
+      try {
+        const air = getAIResolver(provider);
+        const evs = await air.queryFilter(air.filters.MarketResolved());
+        for (const ev of evs) {
+          const mid = Number((ev as any).args?.marketId);
+          if (!isNaN(mid)) resTxMap[mid] = ev.transactionHash;
+        }
+      } catch (e) { console.error("resolution event query failed", e); }
       const total = Number(count);
       setTotalMarketCount(total);
       // Fetch total volume from ALL markets
@@ -167,6 +181,7 @@ loadMarkets();
                 resolvedAt: Number(res.resolvedAt),
                 resolvedBy: res.resolvedBy,
                 attestationHash: res.attestationHash,
+                resTxHash: resTxMap[i] || null,
               };
             } catch {}
           }
@@ -183,6 +198,48 @@ loadMarkets();
     }
   };
 
+  const loadLeaderboard = async () => {
+    setLbLoading(true);
+    try {
+      const provider = new ethers.JsonRpcProvider(CHAIN.rpc);
+      const contract = getLightMarket(provider);
+      // need market outcomes/pools: reuse loaded markets if present, else load
+      let mkts = markets;
+      if (!mkts || mkts.length === 0) { setLbLoading(false); return; }
+      const mById: Record<number, any> = {};
+      for (const m of mkts) mById[m.id] = m;
+      // all bets, every user
+      const evs = await contract.queryFilter(contract.filters.BetPlaced(), 0, "latest");
+      const stats: Record<string, any> = {};
+      for (const e of evs as any[]) {
+        const addr = (e.args.bettor as string);
+        const mid = Number(e.args.marketId);
+        const amount = parseFloat(ethers.formatEther(e.args.amount));
+        const isYes = e.args.isYes as boolean;
+        const m = mById[mid];
+        if (!stats[addr]) stats[addr] = { addr, wagered: 0, won: 0, bets: 0, wins: 0, resolvedBets: 0 };
+        const u = stats[addr];
+        u.wagered += amount; u.bets += 1;
+        if (!m) continue;
+        if (m.status === 4) { u.won += amount; continue; } // cancelled = refund
+        if (m.status === 3) {
+          u.resolvedBets += 1;
+          const winningPool = isYes ? m.yesPool : m.noPool;
+          const didWin = (m.outcome === 1 && isYes) || (m.outcome === 2 && !isYes);
+          if (didWin && winningPool > 0) {
+            u.wins += 1;
+            u.won += (amount / winningPool) * m.totalPool;
+          }
+        }
+      }
+      const rows = Object.values(stats)
+        .map((u: any) => ({ ...u, net: u.won - u.wagered, winRate: u.resolvedBets > 0 ? (u.wins / u.resolvedBets) * 100 : 0 }))
+        .filter((u: any) => u.bets >= 3)
+        .sort((a: any, b: any) => b.net - a.net);
+      setLeaderboard(rows);
+    } catch (e) { console.error("leaderboard load failed", e); }
+    setLbLoading(false);
+  };
   const loadMyBets = async (userAddress: string) => {
     try {
       const provider = new ethers.JsonRpcProvider(CHAIN.rpc);
@@ -250,6 +307,12 @@ let filtered = [...markets].sort((a, b) => b.id - a.id);
   };
 
   const placeBet = async (marketId: number) => {
+    // US bet-block (frontend intent signal). Uses cached geo; QA bypass via localStorage flag.
+    const qaBypass = typeof window !== "undefined" && localStorage.getItem("lm_qa_bypass") === "1";
+    if (!qaBypass && geoCountry === "US") {
+      showToast("Betting is not available to US users", "error");
+      return;
+    }
     if (!termsAccepted) { setShowTerms(true); return; }
     if (!wallet) {
       showToast("Connect wallet first", "error");
@@ -421,6 +484,19 @@ let filtered = [...markets].sort((a, b) => b.id - a.id);
       showToast("Select a league for sports markets", "error");
       return;
     }
+    // Reject unfilled template placeholders in question or criteria
+    const combined = (mktQuestion + " " + mktCriteria);
+    const placeholders = ["$TARGET","TARGET","CITY","TOPIC","PERSON","POSITION","PRODUCT","ITEM1","ITEM2"];
+    const leftover = placeholders.find((ph) => combined.includes(ph));
+    if (leftover) {
+      showToast(`Replace the placeholder "${leftover}" with a real value`, "error");
+      return;
+    }
+    // Crypto markets need an actual target number
+    if (mktCategory === "crypto" && !/\d/.test(combined)) {
+      showToast("Crypto markets need a target price (a number)", "error");
+      return;
+    }
     if (!endDate || !endTime) {
       showToast("Select end date and time", "error");
       return;
@@ -587,6 +663,18 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
     if (isOwner && activeTab === "create") loadOwnerData();
   }, [isOwner, activeTab]);
 
+  // QA bypass: visiting with ?qa=lmtest8842 once permanently allows betting on this device
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("qa") === "lmtest8842") {
+        localStorage.setItem("lm_qa_bypass", "1");
+      }
+      // fetch geo once on load, cache it
+      fetch("https://ipapi.co/json/").then(r => r.json()).then(g => setGeoCountry(g?.country_code || null)).catch(() => setGeoCountry(null));
+    }
+  }, []);
+
   const portfolioWithStatus = portfolio.map((p) => {
     const market = markets.find((m) => m.id === p.marketId);
     const won = market ? didUserWin(market) : null;
@@ -701,6 +789,8 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
           <div className="flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
             <button onClick={() => setActiveTab("browse")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${activeTab === "browse" ? "bg-gradient-to-r from-[#7B61FF] to-[#A855F7] text-white" : "text-[#8B80A8] hover:text-white"}`}>Browse</button>
             <button onClick={() => setActiveTab("portfolio")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${activeTab === "portfolio" ? "bg-gradient-to-r from-[#7B61FF] to-[#A855F7] text-white" : "text-[#8B80A8] hover:text-white"}`}>My Bets</button>
+            <button onClick={() => setActiveTab("mymarkets")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${activeTab === "mymarkets" ? "bg-gradient-to-r from-[#7B61FF] to-[#A855F7] text-white" : "text-[#8B80A8] hover:text-white"}`}>My Markets</button>
+            <button onClick={() => { setActiveTab("leaderboard"); loadLeaderboard(); }} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${activeTab === "leaderboard" ? "bg-gradient-to-r from-[#7B61FF] to-[#A855F7] text-white" : "text-[#8B80A8] hover:text-white"}`}>🏆 Leaderboard</button>
             <button onClick={() => setActiveTab("create")} className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${activeTab === "create" ? "bg-gradient-to-r from-[#7B61FF] to-[#A855F7] text-white" : "text-[#8B80A8] hover:text-white"}`}>+ Create</button>
           </div>
         </div>
@@ -955,7 +1045,7 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
       <div className="text-[10px] text-[#8B80A8] mt-1">
         <span>AI said: "{resolution.aiResponse}" · </span>
         
-        <a href={`https://mainnet.lightscan.app/address/0x035a5e662eF1B9379A96eD3D19fCb8Bc74680597`} target="_blank" rel="noreferrer" className="text-[#7B61FF] hover:underline">View resolver →</a>
+        <a href={resolution.resTxHash ? `${CHAIN.explorer}/tx/${resolution.resTxHash}` : `${CHAIN.explorer}/address/0x035a5e662eF1B9379A96eD3D19fCb8Bc74680597`} target="_blank" rel="noreferrer" className="text-[#7B61FF] hover:underline">{resolution.resTxHash ? "View resolution Tx →" : "View resolver →"}</a>
       </div>
     )}
   </div>
@@ -1112,6 +1202,7 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
                         >
                           {txPending ? "Confirming..." : "Place Bet on LCAI"}
                         </button>
+                        <p className="mt-2 text-center text-[10px] text-gray-500">1% platform + 0.5% creator fee · winners split the rest of the pool</p>
                       </div>
                       )}
                       {isOwner && (
@@ -1158,6 +1249,72 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
           </div>
         )}
 
+        {activeTab === "leaderboard" && (
+          <div>
+            <div className="mb-4 text-center">
+              <h2 className="text-lg font-bold text-white">🏆 Top Predictors</h2>
+              <p className="text-[11px] text-[#8B80A8] mt-1">Ranked by net profit (LCAI won minus wagered). Minimum 3 bets to qualify. All data read live from chain.</p>
+            </div>
+            {lbLoading ? (
+              <div className="text-center text-[#8B80A8] text-sm py-10">Crunching on-chain bets…</div>
+            ) : leaderboard.length === 0 ? (
+              <div className="text-center text-[#8B80A8] text-sm py-10">No qualifying predictors yet — need 3+ resolved bets to appear.</div>
+            ) : (
+              <div className="space-y-2">
+                {leaderboard.map((u, i) => (
+                  <div key={u.addr} className={`flex items-center gap-3 rounded-xl border p-3 ${i < 3 ? "border-[#7B61FF]/50 bg-[#7B61FF]/10" : "border-white/5 bg-white/[0.02]"}`}>
+                    <div className="w-8 text-center text-sm font-bold text-white">{i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-white truncate">{u.addr.slice(0, 6)}…{u.addr.slice(-4)}</div>
+                      <div className="text-[10px] text-[#8B80A8]">{u.bets} bets · {u.winRate.toFixed(0)}% win rate</div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-sm font-bold ${u.net >= 0 ? "text-green-400" : "text-red-400"}`}>{u.net >= 0 ? "+" : ""}{u.net.toFixed(2)} LCAI</div>
+                      <div className="text-[10px] text-[#8B80A8]">{u.won.toFixed(1)} won</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab === "mymarkets" && (
+          <div>
+            {wallet ? (
+              (() => {
+                const mine = markets.filter((m) => m.creator && m.creator.toLowerCase() === wallet.toLowerCase());
+                return mine.length === 0 ? (
+                  <div className="text-center py-16 text-[#8B80A8]">
+                    <p className="text-3xl mb-3">🗂</p>
+                    <p className="mb-4">You haven't created any markets yet</p>
+                    <button onClick={() => setActiveTab("create")} className="rounded-full bg-gradient-to-r from-[#7B61FF] to-[#A855F7] px-6 py-2.5 text-sm font-bold text-white">+ Create a Market</button>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xs text-[#8B80A8] mb-1">{mine.length} market{mine.length>1?"s":""} created by you</p>
+                    {mine.map((m) => (
+                      <div key={m.id} onClick={() => { setActiveMarket(m.id); setActiveTab("browse"); }} className="rounded-2xl border border-[#7B61FF]/20 bg-[#7B61FF]/3 p-4 cursor-pointer hover:border-[#7B61FF]/40 transition-all">
+                        <p className="text-sm font-medium text-white mb-1">{m.question}</p>
+                        <div className="flex items-center gap-3 text-[11px] text-[#8B80A8] flex-wrap">
+                          <span>Market #{m.id}</span>
+                          <span>Pool: {m.totalPool.toFixed(1)} LCAI</span>
+                          <span className={m.status===0?"text-green-400":m.status===3?"text-[#A78BFA]":m.status===4?"text-red-400":"text-yellow-400"}>● {statusLabel(m.status)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()
+            ) : (
+              <div className="text-center py-16 text-[#8B80A8]">
+                <p className="text-3xl mb-3">🔗</p>
+                <p className="mb-4">Connect your wallet to see your markets</p>
+                <button onClick={connectWallet} className="rounded-full bg-gradient-to-r from-[#7B61FF] to-[#A855F7] px-6 py-2.5 text-sm font-bold text-white">Connect Wallet</button>
+              </div>
+            )}
+          </div>
+        )}
         {activeTab === "portfolio" && (
           <div>
             {wallet ? (
@@ -1352,26 +1509,50 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
               )}
               {mktCategory === "sports" && (
                 <div className="mb-2">
-                  <select value={mktLeague} onChange={(e)=>{
-                    const lg = e.target.value; setMktLeague(lg);
-                    if(lg) setMktCriteria(`Resolve based on the official final result of the ${e.target.options[e.target.selectedIndex].text} match between the two competitors named in the question. [SPORT:${lg}]`);
-                  }} className="w-full rounded-xl border border-green-500/30 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-green-500/50">
-                    <option value="">Select league…</option>
-                    <option value="nba">NBA</option><option value="nfl">NFL</option>
-                    <option value="mlb">MLB</option><option value="nhl">NHL</option>
-                    <option value="wnba">WNBA</option><option value="ncaaf">NCAA Football</option>
-                    <option value="ncaab">NCAA Basketball</option><option value="mls">MLS</option>
-                    <option value="epl">Premier League</option><option value="laliga">La Liga</option>
-                    <option value="ucl">Champions League</option><option value="worldcup">World Cup</option>
-                    <option value="atp">Tennis (ATP)</option><option value="wta">Tennis (WTA)</option>
-                  </select>
-                  <p className="mt-1 text-[10px] text-green-400">✓ Picks the exact league so the resolver reads the real final score from ESPN. Name both teams/players in your question.</p>
+                  <label className="mb-1.5 block text-[11px] font-semibold text-green-400/90">🏆 League</label>
+                  <div className="relative">
+                    <select value={mktLeague} onChange={(e)=>{
+                      const lg = e.target.value; setMktLeague(lg);
+                      if(lg) setMktCriteria(`Resolve based on the official final result of the ${e.target.options[e.target.selectedIndex].text} match between the two competitors named in the question. [SPORT:${lg}]`);
+                    }} className="w-full appearance-none rounded-xl border border-green-500/30 bg-[#0d1117] px-4 py-2.5 pr-10 text-sm text-white outline-none transition-all focus:border-green-500/70 focus:ring-2 focus:ring-green-500/20 hover:border-green-500/50 cursor-pointer">
+                      <option value="" className="bg-[#0d1117] text-gray-400">Select a league…</option>
+                      <optgroup label="🏀 Basketball" className="bg-[#0d1117]">
+                        <option value="nba" className="bg-[#0d1117]">NBA</option>
+                        <option value="wnba" className="bg-[#0d1117]">WNBA</option>
+                        <option value="ncaab" className="bg-[#0d1117]">NCAA Basketball</option>
+                      </optgroup>
+                      <optgroup label="🏈 Football" className="bg-[#0d1117]">
+                        <option value="nfl" className="bg-[#0d1117]">NFL</option>
+                        <option value="ncaaf" className="bg-[#0d1117]">NCAA Football</option>
+                      </optgroup>
+                      <optgroup label="⚾ Baseball" className="bg-[#0d1117]">
+                        <option value="mlb" className="bg-[#0d1117]">MLB</option>
+                      </optgroup>
+                      <optgroup label="🏒 Hockey" className="bg-[#0d1117]">
+                        <option value="nhl" className="bg-[#0d1117]">NHL</option>
+                      </optgroup>
+                      <optgroup label="⚽ Soccer" className="bg-[#0d1117]">
+                        <option value="epl" className="bg-[#0d1117]">Premier League</option>
+                        <option value="laliga" className="bg-[#0d1117]">La Liga</option>
+                        <option value="ucl" className="bg-[#0d1117]">Champions League</option>
+                        <option value="mls" className="bg-[#0d1117]">MLS</option>
+                        <option value="worldcup" className="bg-[#0d1117]">World Cup</option>
+                      </optgroup>
+                      <optgroup label="🎾 Tennis" className="bg-[#0d1117]">
+                        <option value="atp" className="bg-[#0d1117]">ATP</option>
+                        <option value="wta" className="bg-[#0d1117]">WTA</option>
+                      </optgroup>
+                    </select>
+                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-green-400/70">▾</div>
+                  </div>
+                  <p className="mt-1.5 text-[10px] text-green-400/80">✓ Picks the exact league so the resolver reads the real final score from ESPN. Name both teams/players in your question.</p>
                 </div>
               )}
               <textarea value={mktCriteria} onChange={(e)=>setMktCriteria(e.target.value)} rows={3}
                 placeholder={mktCategory==="crypto"?"e.g. Check the current BTC/USD price on CoinGecko. If above $80,000 answer YES, otherwise NO.":mktCategory==="weather"?"e.g. Search for current Chicago temperature. If above 70°F answer YES, otherwise NO.":mktCategory==="current"?"e.g. Search for the current US President. If Donald Trump answer YES, otherwise NO.":"e.g. Search for the answer. If confirmed answer YES, otherwise NO."}
                 className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder-gray-600 outline-none focus:border-[#7B61FF]/50 resize-none"/>
-              <p className="mt-1 text-[10px] text-[#8B80A8]">Be specific — the AI uses this exact criteria to determine the outcome. 💡 Tip: Ask ChatGPT or Copilot to write your resolution criteria!</p>
+              <p className="mt-1 text-[10px] text-[#8B80A8]">Be specific — the AI uses this exact criteria to determine the outcome.</p>
+              <a href="https://chat.lightchain.ai/" target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-[#7B61FF]/40 bg-[#7B61FF]/10 px-3 py-1.5 text-[11px] font-semibold text-[#A855F7] hover:bg-[#7B61FF]/20 transition-all">💬 Need help? Ask LCAI Chat to write your question & criteria ↗</a>
             </div>
             <div className="mb-6">
               <label className="mb-2 block text-xs text-[#8B80A8]">Market Duration <span className="text-[#7B61FF]">(your local time)</span></label>
@@ -1425,7 +1606,7 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
       <footer className="relative z-10 border-t border-white/10 bg-black/20 backdrop-blur-xl">
         <div className="mx-auto max-w-6xl px-4 py-4 flex items-center justify-between flex-wrap gap-2">
           <p className="text-[10px] text-[#8B80A8]">
-            Powered by LightchainAI · AI-Native Prediction Markets · <a href="https://discord.gg/UnGgSTjH" target="_blank" rel="noreferrer" className="hover:text-[#7B61FF] transition-all">Discord</a> · <a href="https://github.com/rokhill/Lightmarket/issues" target="_blank" rel="noreferrer" className="hover:text-[#7B61FF] transition-all">Report Issue</a>
+            Powered by LightchainAI · AI-Native Prediction Markets · <a href="https://discord.gg/bbqvSB8wtM" target="_blank" rel="noreferrer" className="hover:text-[#7B61FF] transition-all">Discord</a> · <a href="https://github.com/rokhill/Lightmarket/issues" target="_blank" rel="noreferrer" className="hover:text-[#7B61FF] transition-all">Report Issue</a>
           </p>
           <p className="text-[10px] text-[#4B4560] font-mono hidden sm:block">
             {CONTRACTS.LightMarket.slice(0, 10)}...
