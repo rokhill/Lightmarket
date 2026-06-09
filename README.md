@@ -192,28 +192,6 @@ Team-sport and tennis markets are resolved by LCAI reasoning over **ESPN's offic
 
 ---
 
-## Running Locally
-
-### Prerequisites
-- Node.js 18+
-- MetaMask browser extension
-- LCAI mainnet configured in MetaMask
-
-### Frontend
-```bash
-git clone https://github.com/rokhill/Lightmarket.git
-cd Lightmarket
-npm install
-npm run dev
-```
-
-Open http://localhost:3000
-
-### Resolver
-The resolution engine is a proprietary off-chain service operated by the team during alpha. It watches markets, gathers verified live evidence, routes each market through LCAI inference for a reasoned verdict, and submits the LCAI-attested outcome on-chain. It is not open for third-party operation at this stage; decentralizing resolution is on the roadmap.
-
----
-
 ## Roadmap
 
 ### Phase 1 — Alpha (Current ✅)
