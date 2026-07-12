@@ -4,7 +4,7 @@
 
 Every outcome is resolved by verifiable on-chain LCAI inference and anchored with a Proof of Intelligence attestation. Owner safeguards remain during alpha and will be progressively removed as the resolver proves out — full decentralization is on our roadmap.
 
-🌐 **Live dApp:** https://lightmarket-frontend.vercel.app  
+🌐 **Live dApp:** https://lightmarket.app  
 📦 **dApp Hub:** https://hub.lightchain.ai  
 🔗 **Explorer:** https://mainnet.lightscan.app  
 🐛 **Report Issues:** https://github.com/rokhill/Lightmarket/issues  
@@ -209,17 +209,18 @@ Team-sport and tennis markets are resolved by LCAI reasoning over **ESPN's offic
 - 🔄 dApp Hub submission (pending review)
 - ✅ GitHub open source
 - ✅ Leaderboard — top predictors ranked by net profit
+- ✅ Custom domain — live at lightmarket.app
+- ✅ Market search — find markets by keyword or #ID
+- ✅ Mobile wallet connect — MetaMask deep link for mobile users
 
 ### Phase 2 — Beta (Coming Soon)
 - [ ] **Multiple market types** — range markets, multi-outcome markets
 - [ ] **Price range markets** — "Will BTC close between $80k-$90k?"
-- [ ] **Custom domain** (lightmarket.app)
-- [ ] **Mobile wallet improvements** — WalletConnect v2 support
 - [ ] **Move resolver to VPS** — remove dependency on home PC
+- [ ] **WalletConnect v2** — full multi-wallet support beyond MetaMask
 - [ ] **Resolution criteria templates** — per-category guided creation
 - [ ] **Owner dashboard** — fee analytics, dispute queue
 - [ ] **Featured markets** — curated by owner
-- [ ] **Market search** — find markets by keyword
 - [ ] **Confidence scoring** — flag low-confidence AI resolutions
 
 ### Phase 3 — Production
@@ -246,7 +247,7 @@ Team-sport and tennis markets are resolved by LCAI reasoning over **ESPN's offic
 - AI resolution in active development — verify criteria carefully
 - No refunds on resolved markets
 - Maximum bet: 10 LCAI during alpha
-- Live in-game sports markets may not resolve accurately
+- Sports markets require explicit league tag at creation for best accuracy
 - Use at your own risk
 
 ---
