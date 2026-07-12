@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   title: "LightMarket - AI-Native Prediction Markets on LCAI",
   description: "The First AI-native prediction market on LightchainAI. Every outcome resolved by verifiable inference.",
 icons: {
-  icon: [{ url: "/favicon.ico", sizes: "32x32" }, { url: "/favicon.png", sizes: "192x192" }],
+  icon: [{ url: "/favicon.ico?v=2", sizes: "32x32" }, { url: "/favicon.png?v=2", sizes: "192x192" }],
   shortcut: "/favicon.png",
   apple: "/icon.png"
 },
