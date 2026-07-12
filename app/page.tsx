@@ -23,6 +23,7 @@ export default function Home() {
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [lbLoading, setLbLoading] = useState(false);
   const [browseFilter, setBrowseFilter] = useState("open");
+  const [searchQuery, setSearchQuery] = useState("");
   const [wallet, setWallet] = useState<string | null>(null);
   const [balance, setBalance] = useState<string>("0");
   const [markets, setMarkets] = useState<any[]>([]);
@@ -48,6 +49,7 @@ export default function Home() {
   const [endDate, setEndDate] = useState("");
   const [endTime, setEndTime] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const [showMobileWallet, setShowMobileWallet] = useState(false);
   const [now, setNow] = useState(Math.floor(Date.now() / 1000));
 
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
@@ -82,7 +84,8 @@ loadMarkets();
     try {
       if (!(window as any).ethereum) {
         if (isMobile) {
-          showToast("Please open in MetaMask app browser or use WalletConnect", "error");
+          setShowMobileWallet(true);
+          return;
         } else {
           showToast("MetaMask not found. Please install it.", "error");
         }
@@ -296,13 +299,23 @@ loadMarkets();
   const getFilteredMarkets = () => {
 let filtered = [...markets].sort((a, b) => b.id - a.id);
     if (browseFilter === "open") filtered = filtered.filter((m) => m.status === 0);
-    else if (browseFilter === "closed") filtered = filtered.filter((m) => m.status === 3);
+    else if (browseFilter === "closed") filtered = filtered
+      .filter((m) => m.status === 3)
+      .sort((a, b) => (b.resolvedAt || b.id) - (a.resolvedAt || a.id));
     else if (browseFilter === "biggest")
       filtered = filtered.sort((a, b) => b.totalPool - a.totalPool);
     else if (browseFilter === "ending")
       filtered = filtered
         .filter((m) => m.status === 0)
         .sort((a, b) => a.closesAtTs - b.closesAtTs);
+    if (searchQuery.trim()) {
+      const qq = searchQuery.trim().toLowerCase();
+      filtered = filtered.filter((m) =>
+        (m.question && m.question.toLowerCase().includes(qq)) ||
+        (m.criteria && m.criteria.toLowerCase().includes(qq)) ||
+        String(m.id) === qq.replace("#", "")
+      );
+    }
     return filtered;
   };
 
@@ -554,8 +567,10 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
     }
   };
 
-  const getCategory = (question: string) => {
+  const getCategory = (question: string, criteria?: string) => {
     const q = question.toLowerCase();
+    const crit = (criteria || "").toLowerCase();
+    if (/\[sport:/.test(crit)) return { emoji: "🏆", label: "Sports", color: "text-green-400 border-green-400/30 bg-green-400/10" };
     if (q.includes("btc") || q.includes("bitcoin") || q.includes("eth") || q.includes("sol") || q.includes("crypto") || q.includes("lcai") || q.includes("price") || q.includes("token")) return { emoji: "💰", label: "Crypto", color: "text-yellow-400 border-yellow-400/30 bg-yellow-400/10" };
     if (q.includes("nfl") || q.includes("nba") || q.includes("mlb") || q.includes("nhl") || q.includes("soccer") || q.includes("tennis") || q.includes("football") || q.includes("basketball") || q.includes("baseball") || q.includes("sport") || q.includes("game") || q.includes("match") || q.includes("championship") || q.includes("super bowl") || q.includes("world cup") || q.includes("playoff")) return { emoji: "🏆", label: "Sports", color: "text-green-400 border-green-400/30 bg-green-400/10" };
     if (q.includes("weather") || q.includes("temperature") || q.includes("rain") || q.includes("snow") || q.includes("°f") || q.includes("°c") || q.includes("humid") || q.includes("wind")) return { emoji: "🌤", label: "Weather", color: "text-blue-400 border-blue-400/30 bg-blue-400/10" };
@@ -698,6 +713,35 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
 
   return (
     <div className="min-h-screen bg-black text-white relative overflow-hidden">
+    {showMobileWallet && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={()=>setShowMobileWallet(false)}>
+        <div className="w-full max-w-sm rounded-2xl border border-[#7B61FF]/30 bg-[#0D0D1A] p-6 shadow-2xl" onClick={e=>e.stopPropagation()}>
+          <div className="mb-5 text-center">
+            <div className="text-3xl mb-2">⚡</div>
+            <h2 className="text-lg font-bold text-white">Connect a Wallet</h2>
+            <p className="text-[11px] text-[#8B80A8] mt-1">Pick how you would like to connect to LightMarket</p>
+          </div>
+          <div className="space-y-3">
+            <a href="https://metamask.app.link/dapp/lightmarket.app" className="flex items-center gap-3 w-full rounded-xl border border-[#7B61FF]/40 bg-[#7B61FF]/10 px-4 py-3.5 hover:bg-[#7B61FF]/20 transition-all">
+              <span className="text-2xl">🦊</span>
+              <div className="text-left flex-1">
+                <div className="text-sm font-bold text-white">Open in MetaMask</div>
+                <div className="text-[10px] text-[#8B80A8]">Best on mobile — opens LightMarket inside MetaMask automatically</div>
+              </div>
+              <span className="text-[#7B61FF] text-lg">↗</span>
+            </a>
+            <button onClick={()=>{setShowMobileWallet(false); if((window as any).ethereum) connectWallet();}} className="flex items-center gap-3 w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 hover:bg-white/[0.06] transition-all">
+              <span className="text-2xl">🌐</span>
+              <div className="text-left flex-1">
+                <div className="text-sm font-bold text-white">Browser Wallet</div>
+                <div className="text-[10px] text-[#8B80A8]">Already inside MetaMask browser or have an injected wallet</div>
+              </div>
+            </button>
+          </div>
+          <button onClick={()=>setShowMobileWallet(false)} className="mt-4 w-full text-center text-[11px] text-[#8B80A8] hover:text-white transition-all">Cancel</button>
+        </div>
+      </div>
+    )}
 <div className="pointer-events-none absolute inset-0 overflow-hidden">
   {/* Base gradient */}
   <div className="absolute inset-0" style={{background: "radial-gradient(ellipse at 50% -20%, rgba(123,97,255,0.3) 0%, rgba(10,2,31,0.8) 50%, transparent 70%)"}} />
@@ -871,6 +915,20 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
 
         {activeTab === "browse" && (
           <div>
+            <div className="mb-4">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="🔍 Search markets by keyword or #ID..."
+                  className="w-full rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder-[#8B80A8] focus:border-[#7B61FF] focus:outline-none transition-all"
+                />
+                {searchQuery && (
+                  <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#8B80A8] hover:text-white text-sm">✕</button>
+                )}
+              </div>
+            </div>
             <div className="flex gap-2 mb-5 flex-wrap">
               {FILTERS.map((f) => (
                 <button
@@ -898,7 +956,7 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
                   <h3 className="text-xs font-semibold text-[#8B80A8] uppercase tracking-wider mb-3">🔥 Featured Markets</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     {markets.filter(m => m.status === 0 && m.totalPool > 0).sort((a, b) => b.totalPool - a.totalPool).slice(0, 3).map(m => {
-                      const cat = getCategory(m.question);
+                      const cat = getCategory(m.question, m.criteria);
                       return (
                         <div key={m.id} onClick={() => { setActiveMarket(m.id); setActiveTab("browse"); setBrowseFilter("open"); }} className={`rounded-xl border p-3 cursor-pointer hover:border-[#7B61FF]/40 transition-all ${cat.color}`}>
                           <span className="text-[10px] font-semibold">{cat.emoji} {cat.label}</span>
@@ -952,18 +1010,18 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
 className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-all relative overflow-hidden ${
   isActive
     ? "border-[#7B61FF]/60 bg-[#7B61FF]/5 shadow-[0_0_20px_rgba(123,97,255,0.2)]"
-    : getCategory(m.question).label === "Crypto" ? "border-yellow-500/20 bg-yellow-500/5 hover:border-yellow-500/40 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)]"
-    : getCategory(m.question).label === "Sports" ? "border-green-500/20 bg-green-500/5 hover:border-green-500/40 hover:shadow-[0_0_20px_rgba(34,197,94,0.15)]"
-    : getCategory(m.question).label === "Weather" ? "border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)]"
-    : getCategory(m.question).label === "Politics" ? "border-red-500/20 bg-red-500/5 hover:border-red-500/40 hover:shadow-[0_0_20px_rgba(239,68,68,0.15)]"
-    : getCategory(m.question).label === "AI & Tech" ? "border-purple-500/20 bg-purple-500/5 hover:border-purple-500/40 hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]"
+    : getCategory(m.question, m.criteria).label === "Crypto" ? "border-yellow-500/20 bg-yellow-500/5 hover:border-yellow-500/40 hover:shadow-[0_0_20px_rgba(234,179,8,0.15)]"
+    : getCategory(m.question, m.criteria).label === "Sports" ? "border-green-500/20 bg-green-500/5 hover:border-green-500/40 hover:shadow-[0_0_20px_rgba(34,197,94,0.15)]"
+    : getCategory(m.question, m.criteria).label === "Weather" ? "border-blue-500/20 bg-blue-500/5 hover:border-blue-500/40 hover:shadow-[0_0_20px_rgba(59,130,246,0.15)]"
+    : getCategory(m.question, m.criteria).label === "Politics" ? "border-red-500/20 bg-red-500/5 hover:border-red-500/40 hover:shadow-[0_0_20px_rgba(239,68,68,0.15)]"
+    : getCategory(m.question, m.criteria).label === "AI & Tech" ? "border-purple-500/20 bg-purple-500/5 hover:border-purple-500/40 hover:shadow-[0_0_20px_rgba(168,85,247,0.15)]"
     : "border-white/10 bg-white/3 hover:border-[#7B61FF]/40 hover:shadow-[0_0_20px_rgba(123,97,255,0.15)]"
 }`}
                   >
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <p className="text-sm font-semibold leading-snug text-white">{m.question}</p>
                       <div className="flex gap-1 shrink-0">
-                        {(() => { const cat = getCategory(m.question); return <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${cat.color}`}>{cat.emoji} {cat.label}</span>; })()}
+                        {(() => { const cat = getCategory(m.question, m.criteria); return <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold border ${cat.color}`}>{cat.emoji} {cat.label}</span>; })()}
                         <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold bg-[#7B61FF]/20 text-[#A78BFA] border border-[#7B61FF]/30">
                           Yes / No
                         </span>

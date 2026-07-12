@@ -27,6 +27,7 @@ export const LIGHTMARKET_ABI = [
   "function claimPriceWinnings(uint256 marketId)",
   "function withdraw()",
   "function pendingWithdrawals(address) view returns (uint256)",
+  "function cancelMarket(uint256 marketId, string reason) external",
   "function createBinaryMarket(string question, string resolutionCriteria, uint256 targetPrice, uint256 closesAt, uint256 resolvesAt, uint256 creatorFeeBps) returns (uint256)",
   "function createPricePredictionMarket(string question, string resolutionCriteria, uint256 closesAt, uint256 resolvesAt, uint256 creatorFeeBps) returns (uint256)",
   "event MarketCreated(uint256 indexed marketId, address indexed creator, uint8 marketType, string question, uint256 closesAt, uint256 resolvesAt)",
