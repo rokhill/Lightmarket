@@ -844,7 +844,7 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
         </div>
         {/* ROW 4 — Neon sign */}
         <div className="flex justify-center items-center py-0 border-t border-white/5">
-          <Image src="/images/lightmarket.png" alt="LightMarket" width={420} height={30} className="object-contain neon-logo mix-blend-screen" priority />
+          <Image src="/neon-logo.png" alt="LightMarket" width={420} height={30} className="object-contain neon-logo mix-blend-screen" priority />
         </div>
       </header>
 
