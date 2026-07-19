@@ -844,7 +844,7 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
         </div>
         {/* ROW 4 — Neon sign */}
         <div className="flex justify-center items-center py-0 border-t border-white/5">
-          <Image src="/neon-logo.png" alt="LightMarket" width={420} height={30} className="object-contain neon-logo mix-blend-screen" priority />
+          <Image src="/images/lightmarket.png" alt="LightMarket" width={420} height={30} className="object-contain neon-logo mix-blend-screen" priority />
         </div>
       </header>
 
@@ -1108,18 +1108,23 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
     )}
   </div>
 )}
-                    {isResolved && userBet && won === true && !claimed && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          claimWinnings(m.id);
-                        }}
-                        disabled={txPending}
-                        className="w-full rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 py-2.5 text-sm font-bold text-white mb-3 disabled:opacity-40 transition-all"
-                      >
-                        {txPending ? "Claiming..." : "🏆 Claim Winnings"}
-                      </button>
-                    )}
+                    {isResolved && userBet && won === true && !claimed && (() => {
+                      const _reviewOver = m.resolvedAt && (Date.now()/1000 - m.resolvedAt) > 7200;
+                      const _minsLeft = m.resolvedAt ? Math.max(0, Math.ceil((m.resolvedAt + 7200 - Date.now()/1000) / 60)) : 120;
+                      return _reviewOver ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); claimWinnings(m.id); }}
+                          disabled={txPending}
+                          className="w-full rounded-xl bg-gradient-to-r from-green-500 to-emerald-500 py-2.5 text-sm font-bold text-white mb-3 disabled:opacity-40 transition-all"
+                        >
+                          {txPending ? "Claiming..." : "🏆 Claim Winnings"}
+                        </button>
+                      ) : (
+                        <div className="w-full rounded-xl border border-yellow-500/30 bg-yellow-500/5 py-2.5 text-sm font-bold text-yellow-400 text-center mb-3">
+                          ⏳ Under review — claimable in {_minsLeft}m
+                        </div>
+                      );
+                    })()}
 
                     {isResolved && userBet && won === true && claimed && (
                       <div className="w-full rounded-xl border border-green-500/30 bg-green-500/10 py-2 text-sm font-bold text-green-400 text-center mb-3">
@@ -1427,15 +1432,24 @@ className={`rounded-2xl border p-5 backdrop-blur-xl cursor-pointer transition-al
                       </div>
 
                       <div className="text-right shrink-0 ml-3">
-                        {p.won === true && !p.claimed && (
-                          <button
-                            onClick={() => claimWinnings(p.marketId)}
-                            disabled={txPending}
-                            className="rounded-full bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-1.5 text-xs font-bold text-white disabled:opacity-40"
-                          >
-                            🏆 Claim
-                          </button>
-                        )}
+                        {p.won === true && !p.claimed && (() => {
+                          const _bm = markets.find((x:any) => x.id === p.marketId);
+                          const _reviewOver = _bm && _bm.resolvedAt && (Date.now()/1000 - _bm.resolvedAt) > 7200;
+                          const _minsLeft = _bm && _bm.resolvedAt ? Math.max(0, Math.ceil((_bm.resolvedAt + 7200 - Date.now()/1000) / 60)) : 120;
+                          return _reviewOver ? (
+                            <button
+                              onClick={() => claimWinnings(p.marketId)}
+                              disabled={txPending}
+                              className="rounded-full bg-gradient-to-r from-green-500 to-emerald-500 px-4 py-1.5 text-xs font-bold text-white disabled:opacity-40"
+                            >
+                              🏆 Claim
+                            </button>
+                          ) : (
+                            <div className="rounded-full border border-yellow-500/30 bg-yellow-500/5 px-3 py-1.5 text-[10px] font-bold text-yellow-400 text-center">
+                              ⏳ {_minsLeft}m
+                            </div>
+                          );
+                        })()}
 
                         {p.won === true && p.claimed && (
                           <span className="text-xs font-bold text-green-400">
