@@ -766,7 +766,7 @@ const closesAt = Math.floor(closesAtDate.getTime() / 1000);
         `}</style>
         {/* ROW 1 — LM icon left, wallet right */}
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
-          <Image src="/icon.png" alt="LM" width={120} height={120} className="mix-blend-lighten" priority />
+          <Image src="/icon.png" alt="LM" width={120} height={120} className="mix-blend-lighten w-8 h-8 md:w-16 md:h-16" priority />
           <div className="flex items-center gap-3 relative">
             {pendingWinnings > 0 && (
               <span className="text-xs text-green-400 font-semibold animate-pulse hidden sm:block">
